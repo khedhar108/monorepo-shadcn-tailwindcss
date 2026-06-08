@@ -1,0 +1,6 @@
+/* Component-level styles for the UI package */
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "./styles/globals.css";
+
+@source "./**/*.{js,ts,jsx,tsx}";

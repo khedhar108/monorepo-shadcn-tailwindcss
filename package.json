@@ -2,18 +2,32 @@
   "name": "aria",
   "private": true,
   "scripts": {
-    "build": "turbo run build",
+    "preinstall": "npx only-allow pnpm",
     "dev": "turbo run dev",
+    "dev:web": "turbo run dev --filter=web --filter=@repo/ui",
+    "dev:docs": "turbo run dev --filter=docs --filter=@repo/ui",
+    "build": "turbo run build",
+    "build:web": "turbo run build --filter=web...",
+    "build:docs": "turbo run build --filter=docs...",
+    "build:ui": "turbo run build --filter=@repo/ui",
+    "start:web": "pnpm --filter web start",
+    "start:docs": "pnpm --filter docs start",
     "lint": "turbo run lint",
-    "format": "prettier --write \"**/*.{ts,tsx,md}\"",
-    "check-types": "turbo run check-types"
+    "lint:fix": "turbo run lint -- --fix",
+    "check-types": "turbo run check-types",
+    "format": "prettier --write \"**/*.{ts,tsx,md,json,css,mjs}\"",
+    "format:check": "prettier --check \"**/*.{ts,tsx,md,json,css,mjs}\"",
+    "clean": "turbo run clean && rimraf node_modules",
+    "clean:turbo": "rimraf .turbo && rimraf apps/**/.turbo && rimraf packages/**/.turbo",
+    "ui:add": "pnpm dlx shadcn@latest add -c ./packages/ui"
   },
   "devDependencies": {
     "prettier": "^3.7.4",
+    "rimraf": "^6.0.1",
     "turbo": "^2.9.16",
     "typescript": "5.9.2"
   },
-  "packageManager": "pnpm@9.0.0",
+  "packageManager": "pnpm@9.15.4",
   "engines": {
     "node": ">=18"
   }

@@ -1,159 +1,171 @@
-# Turborepo starter
+# Aria
 
-This Turborepo starter is maintained by the Turborepo core team.
+A production-ready **Turborepo monorepo** using **pnpm**, **Next.js**, **Tailwind CSS v4**, and **ShadCN UI** in a shared `packages/ui` library.
 
-## Using this example
+> **Package manager:** This repo uses [pnpm](https://pnpm.io) only (v9.15+ for workspace catalogs). Run all commands from the repository root. npm/yarn are blocked via `only-allow`.
 
-Run the following command:
+## Quick start
 
-```sh
-npx create-turbo@latest
+```bash
+# Clone and install
+git clone <your-repo-url>
+cd aria
+pnpm install
+
+# Develop all apps + UI CSS watcher
+pnpm dev
+
+# Or run a single app
+pnpm dev:web    # http://localhost:3000
+pnpm dev:docs   # http://localhost:3001
 ```
 
-## What's inside?
+## Architecture
 
-This Turborepo includes the following packages/apps:
-
-### Apps and Packages
-
-- `docs`: a [Next.js](https://nextjs.org/) app
-- `web`: another [Next.js](https://nextjs.org/) app
-- `@repo/ui`: a stub React component library shared by both `web` and `docs` applications
-- `@repo/eslint-config`: `eslint` configurations (includes `eslint-config-next` and `eslint-config-prettier`)
-- `@repo/typescript-config`: `tsconfig.json`s used throughout the monorepo
-
-Each package/app is 100% [TypeScript](https://www.typescriptlang.org/).
-
-### Utilities
-
-This Turborepo has some additional tools already setup for you:
-
-- [TypeScript](https://www.typescriptlang.org/) for static type checking
-- [ESLint](https://eslint.org/) for code linting
-- [Prettier](https://prettier.io) for code formatting
-
-### Build
-
-To build all apps and packages, run the following command:
-
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed (recommended):
-
-```sh
-cd my-turborepo
-turbo build
+```
+aria/
+├── apps/
+│   ├── web/          # Main Next.js app (port 3000)
+│   └── docs/         # Docs Next.js app (port 3001)
+├── packages/
+│   ├── ui/           # Shared ShadCN components + global theme
+│   ├── eslint-config/
+│   └── typescript-config/
+├── turbo.json        # Task pipeline (build, dev, lint)
+└── pnpm-workspace.yaml
 ```
 
-Without global `turbo`, use your package manager:
+### How styling works (two-compilation model)
 
-```sh
-cd my-turborepo
-npx turbo build
-pnpm dlx turbo build
-pnpm exec turbo build
+Tailwind CSS v4 is compiled in **two places** on purpose — this follows the [official Turborepo + Tailwind guide](https://turborepo.dev/docs/guides/tools/tailwind):
+
+| Layer | Package | Responsibility |
+|-------|---------|----------------|
+| **UI components** | `packages/ui` | ShadCN components, design tokens, pre-compiled `dist/index.css` |
+| **App utilities** | Each app (`web`, `docs`) | Page-level Tailwind classes, app-specific theme extensions |
+
+```
+packages/ui                          apps/web, apps/docs
+────────────────                     ────────────────────
+src/components/*.tsx                 app/**/*.tsx
+src/styles/globals.css  ─────────► globals.css imports tokens
+         │                           @import "tailwindcss"
+         ▼                           @import "@repo/ui/globals.css"
+dist/index.css          ─────────► layout.tsx imports both:
+  exported as                          @repo/ui/styles.css  (components)
+  @repo/ui/styles.css                  ./globals.css         (app utilities)
 ```
 
-You can build a specific package by using a [filter](https://turborepo.dev/docs/crafting-your-repository/running-tasks#using-filters):
+**Why not a single Tailwind install?** Tailwind v4 `@source` paths resolve relative to each CSS entry file. A single compilation cannot reliably scan both `packages/ui` and every app. The two-compilation model avoids missing styles and scales cleanly.
 
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed:
+### Global theme (single source of truth)
 
-```sh
-turbo build --filter=docs
+All design tokens live in one file:
+
+```
+packages/ui/src/styles/globals.css
 ```
 
-Without global `turbo`:
+- Light/dark mode CSS variables (`:root`, `.dark`)
+- ShadCN theme mappings (`@theme inline`)
+- Base resets (`@layer base`)
 
-```sh
-npx turbo build --filter=docs
-pnpm exec turbo build --filter=docs
-pnpm exec turbo build --filter=docs
+Every app imports these tokens via `@import "@repo/ui/globals.css"` in its own `globals.css`. Change the theme once — all apps inherit it.
+
+### ShadCN UI components
+
+Components live **only** in `packages/ui`. Apps never run `shadcn add` locally.
+
+```bash
+# Add a component from the repo root
+pnpm ui:add dialog
+pnpm ui:add dropdown-menu
 ```
 
-### Develop
+Use in any app:
 
-To develop all apps and packages, run the following command:
-
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed (recommended):
-
-```sh
-cd my-turborepo
-turbo dev
+```tsx
+import { Button } from "@repo/ui/components/button";
+import { Card, CardHeader, CardTitle } from "@repo/ui/components/card";
 ```
 
-Without global `turbo`, use your package manager:
+## Scripts
 
-```sh
-cd my-turborepo
-npx turbo dev
-pnpm exec turbo dev
-pnpm exec turbo dev
+| Command | Description |
+|---------|-------------|
+| `pnpm install` | Install all workspace dependencies |
+| `pnpm dev` | Start all apps + UI CSS watcher |
+| `pnpm dev:web` | Start `web` + `@repo/ui` watcher |
+| `pnpm dev:docs` | Start `docs` + `@repo/ui` watcher |
+| `pnpm build` | Build UI CSS, then all apps |
+| `pnpm build:web` | Build `web` and dependencies |
+| `pnpm build:docs` | Build `docs` and dependencies |
+| `pnpm build:ui` | Build only `@repo/ui` CSS |
+| `pnpm ui:add <name>` | Add a ShadCN component to `packages/ui` |
+| `pnpm lint` | Lint entire monorepo |
+| `pnpm check-types` | TypeScript check all packages |
+| `pnpm format` | Format with Prettier |
+
+## Adding a new app
+
+1. Create `apps/<name>` as a Next.js app.
+2. Add dependencies:
+
+   ```bash
+   pnpm --filter <name> add @repo/ui next react react-dom
+   pnpm --filter <name> add -D tailwindcss @tailwindcss/postcss
+   ```
+
+3. Add `postcss.config.mjs` (same as `apps/web`).
+4. Create `app/globals.css`:
+
+   ```css
+   @import "tailwindcss";
+   @import "@repo/ui/globals.css";
+   @source "../**/*.{js,ts,jsx,tsx}";
+   ```
+
+5. Import styles in `app/layout.tsx`:
+
+   ```tsx
+   import "@repo/ui/styles.css";
+   import "./globals.css";
+   ```
+
+6. Set `transpilePackages: ["@repo/ui"]` in `next.config.js`.
+7. Add root scripts: `dev:<name>`, `build:<name>`.
+
+See [TAILWIND_SHADCN_GUIDE.md](./TAILWIND_SHADCN_GUIDE.md) for the full integration reference.
+
+## Shared dependency versions
+
+Workspace dependency versions are centralized in `pnpm-workspace.yaml` under `catalog:` (React, Next.js, Tailwind, TypeScript, etc.). Reference them in package.json as `"catalog:"` to keep versions aligned across apps and packages.
+
+## CI / production build
+
+```bash
+pnpm install --frozen-lockfile
+pnpm format:check
+pnpm lint
+pnpm check-types
+pnpm build
 ```
 
-You can develop a specific package by using a [filter](https://turborepo.dev/docs/crafting-your-repository/running-tasks#using-filters):
+Turborepo runs `@repo/ui` build before apps (`dependsOn: ["^build"]`), ensuring `dist/index.css` exists.
 
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed:
+## Packages
 
-```sh
-turbo dev --filter=web
-```
+| Package | Description |
+|---------|-------------|
+| `web` | Primary Next.js application |
+| `docs` | Documentation / secondary Next.js app |
+| `@repo/ui` | Shared ShadCN UI library + global theme |
+| `@repo/eslint-config` | Shared ESLint configuration |
+| `@repo/typescript-config` | Shared TypeScript configuration |
 
-Without global `turbo`:
+## Further reading
 
-```sh
-npx turbo dev --filter=web
-pnpm exec turbo dev --filter=web
-pnpm exec turbo dev --filter=web
-```
-
-### Remote Caching
-
-> [!TIP]
-> Vercel Remote Cache is free for all plans. Get started today at [vercel.com](https://vercel.com/signup?utm_source=remote-cache-sdk&utm_campaign=free_remote_cache).
-
-Turborepo can use a technique known as [Remote Caching](https://turborepo.dev/docs/core-concepts/remote-caching) to share cache artifacts across machines, enabling you to share build caches with your team and CI/CD pipelines.
-
-By default, Turborepo will cache locally. To enable Remote Caching you will need an account with Vercel. If you don't have an account you can [create one](https://vercel.com/signup?utm_source=turborepo-examples), then enter the following commands:
-
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed (recommended):
-
-```sh
-cd my-turborepo
-turbo login
-```
-
-Without global `turbo`, use your package manager:
-
-```sh
-cd my-turborepo
-npx turbo login
-pnpm exec turbo login
-pnpm exec turbo login
-```
-
-This will authenticate the Turborepo CLI with your [Vercel account](https://vercel.com/docs/concepts/personal-accounts/overview).
-
-Next, you can link your Turborepo to your Remote Cache by running the following command from the root of your Turborepo:
-
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed:
-
-```sh
-turbo link
-```
-
-Without global `turbo`:
-
-```sh
-npx turbo link
-pnpm exec turbo link
-pnpm exec turbo link
-```
-
-## Useful Links
-
-Learn more about the power of Turborepo:
-
-- [Tasks](https://turborepo.dev/docs/crafting-your-repository/running-tasks)
-- [Caching](https://turborepo.dev/docs/crafting-your-repository/caching)
-- [Remote Caching](https://turborepo.dev/docs/core-concepts/remote-caching)
-- [Filtering](https://turborepo.dev/docs/crafting-your-repository/running-tasks#using-filters)
-- [Configuration Options](https://turborepo.dev/docs/reference/configuration)
-- [CLI Usage](https://turborepo.dev/docs/reference/command-line-reference)
+- [TAILWIND_SHADCN_GUIDE.md](./TAILWIND_SHADCN_GUIDE.md) — detailed Tailwind + ShadCN setup
+- [Turborepo docs](https://turborepo.dev/docs)
+- [ShadCN UI monorepo](https://ui.shadcn.com/docs/monorepo)
+- [Tailwind CSS v4](https://tailwindcss.com/docs)

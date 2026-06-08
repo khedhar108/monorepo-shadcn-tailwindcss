@@ -1,101 +1,74 @@
-import Image, { type ImageProps } from "next/image";
-import { Button } from "@repo/ui/button";
-import styles from "./page.module.css";
-
-type Props = Omit<ImageProps, "src"> & {
-  srcLight: string;
-  srcDark: string;
-};
-
-const ThemeImage = (props: Props) => {
-  const { srcLight, srcDark, ...rest } = props;
-
-  return (
-    <>
-      <Image {...rest} src={srcLight} className="imgLight" />
-      <Image {...rest} src={srcDark} className="imgDark" />
-    </>
-  );
-};
+import Image from "next/image";
+import { Button } from "@repo/ui/components/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "@repo/ui/components/card";
+import { BookOpen, ExternalLink, FileText } from "lucide-react";
 
 export default function Home() {
   return (
-    <div className={styles.page}>
-      <main className={styles.main}>
-        <ThemeImage
-          className={styles.logo}
-          srcLight="turborepo-dark.svg"
-          srcDark="turborepo-light.svg"
-          alt="Turborepo logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol>
-          <li>
-            Get started by editing <code>apps/docs/app/page.tsx</code>
-          </li>
-          <li>Save and see your changes instantly.</li>
-        </ol>
-
-        <div className={styles.ctas}>
-          <a
-            className={styles.primary}
-            href="https://vercel.com/new/clone?demo-description=Learn+to+implement+a+monorepo+with+a+two+Next.js+sites+that+has+installed+three+local+packages.&demo-image=%2F%2Fimages.ctfassets.net%2Fe5382hct74si%2F4K8ZISWAzJ8X1504ca0zmC%2F0b21a1c6246add355e55816278ef54bc%2FBasic.png&demo-title=Monorepo+with+Turborepo&demo-url=https%3A%2F%2Fexamples-basic-web.vercel.sh%2F&from=templates&project-name=Monorepo+with+Turborepo&repository-name=monorepo-turborepo&repository-url=https%3A%2F%2Fgithub.com%2Fvercel%2Fturborepo%2Ftree%2Fmain%2Fexamples%2Fbasic&root-directory=apps%2Fdocs&skippable-integrations=1&teamSlug=vercel&utm_source=create-turbo"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className={styles.logo}
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            href="https://turborepo.dev/docs?utm_source"
-            target="_blank"
-            rel="noopener noreferrer"
-            className={styles.secondary}
-          >
-            Read our docs
-          </a>
+    <div className="min-h-screen bg-linear-to-b from-neutral-50 to-neutral-100 dark:from-neutral-950 dark:to-neutral-900 flex flex-col items-center justify-center py-16 px-4 sm:px-6 lg:px-8">
+      <header className="text-center max-w-2xl mb-12 flex flex-col items-center">
+        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-neutral-200 dark:border-neutral-800 bg-white/50 dark:bg-neutral-900/50 backdrop-blur-xs text-xs font-semibold text-neutral-600 dark:text-neutral-300 mb-6 shadow-xs">
+          <FileText className="size-3.5 text-primary" />
+          <span>Aria Docs</span>
         </div>
-        <Button appName="docs" className={styles.secondary}>
-          Open alert
-        </Button>
+        <h1 className="text-4xl sm:text-5xl font-extrabold tracking-tight text-foreground mb-4">
+          Monorepo Documentation
+        </h1>
+        <p className="text-base sm:text-lg text-muted-foreground font-medium">
+          Shared ShadCN UI components and global theme from{" "}
+          <code className="font-mono text-sm bg-muted px-1.5 py-0.5 rounded-md">@repo/ui</code>
+        </p>
+      </header>
+
+      <main className="w-full max-w-2xl">
+        <Card className="border border-neutral-200/80 dark:border-neutral-800 bg-card shadow-xl rounded-2xl overflow-hidden">
+          <CardHeader className="border-b border-border pb-6">
+            <CardTitle className="text-xl font-bold">Getting Started</CardTitle>
+            <CardDescription>
+              Edit <code className="font-mono text-xs">apps/docs/app/page.tsx</code> to customize
+              this app. All ShadCN components come from the shared UI package.
+            </CardDescription>
+          </CardHeader>
+
+          <CardContent className="pt-6 space-y-4">
+            <ol className="list-decimal list-inside space-y-2 text-sm text-muted-foreground font-mono">
+              <li>Run <code className="bg-muted px-1 rounded">pnpm install</code> from the repo root</li>
+              <li>Start docs with <code className="bg-muted px-1 rounded">pnpm dev:docs</code></li>
+              <li>Add components with <code className="bg-muted px-1 rounded">pnpm ui:add &lt;name&gt;</code></li>
+            </ol>
+          </CardContent>
+
+          <CardFooter className="flex flex-col sm:flex-row items-center gap-3 border-t border-border pt-6">
+            <Button variant="default" className="w-full sm:w-auto gap-2" asChild>
+              <a
+                href="https://turborepo.dev/docs"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                <BookOpen className="size-4" />
+                Turborepo Docs
+              </a>
+            </Button>
+            <Button variant="outline" className="w-full sm:w-auto gap-2" asChild>
+              <a href="http://localhost:3000" target="_blank" rel="noopener noreferrer">
+                <ExternalLink className="size-4" />
+                Open Web App
+              </a>
+            </Button>
+          </CardFooter>
+        </Card>
       </main>
-      <footer className={styles.footer}>
-        <a
-          href="https://vercel.com/templates?search=turborepo&utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          href="https://turborepo.dev?utm_source=create-turbo"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to turborepo.dev →
-        </a>
+
+      <footer className="mt-16 flex items-center gap-2 text-xs text-muted-foreground">
+        <Image src="/globe.svg" alt="" width={16} height={16} aria-hidden />
+        <span>Powered by @repo/ui global theme</span>
       </footer>
     </div>
   );
