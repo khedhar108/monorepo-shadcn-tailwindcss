@@ -3,6 +3,8 @@
 A production-ready **Turborepo monorepo** using **pnpm**, **Next.js**, **Tailwind CSS v4**, and **ShadCN UI** in a shared `packages/ui` library.
 
 > **Package manager:** This repo uses [pnpm](https://pnpm.io) only (v9.15+ for workspace catalogs). Run all commands from the repository root. npm/yarn are blocked via `only-allow`.
+>
+> **Node.js:** `>=22.13.0` (see `.nvmrc`). Required for Mastra integration.
 
 ## Quick start
 
@@ -165,6 +167,7 @@ Turborepo runs `@repo/ui` build before apps (`dependsOn: ["^build"]`), ensuring 
 
 ## Further reading
 
+- [docs/README.md](./docs/README.md) — project documentation index (architecture, features, ADRs, AI agents)
 - [TAILWIND_SHADCN_GUIDE.md](./TAILWIND_SHADCN_GUIDE.md) — detailed Tailwind + ShadCN setup
 - [Turborepo docs](https://turborepo.dev/docs)
 - [ShadCN UI monorepo](https://ui.shadcn.com/docs/monorepo)

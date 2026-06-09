@@ -12,7 +12,11 @@
     "clean": "rimraf .next .turbo node_modules"
   },
   "dependencies": {
+    "@ai-sdk/react": "^3.0.200",
+    "@mastra/client-js": "^1.23.2",
+    "@repo/ai-ui": "workspace:^",
     "@repo/ui": "workspace:*",
+    "ai": "^6.0.198",
     "lucide-react": "catalog:",
     "next": "catalog:",
     "react": "catalog:",

@@ -4,8 +4,10 @@
   "scripts": {
     "preinstall": "npx only-allow pnpm",
     "dev": "turbo run dev",
-    "dev:web": "turbo run dev --filter=web --filter=@repo/ui",
+    "dev:web": "turbo run dev --filter=web --filter=@repo/ui --filter=@repo/ai-ui",
     "dev:docs": "turbo run dev --filter=docs --filter=@repo/ui",
+    "dev:agent": "turbo run dev --filter=@repo/agent",
+    "dev:web+agent": "turbo run dev --filter=web --filter=@repo/agent --filter=@repo/ui --filter=@repo/ai-ui",
     "build": "turbo run build",
     "build:web": "turbo run build --filter=web...",
     "build:docs": "turbo run build --filter=docs...",
@@ -29,6 +31,6 @@
   },
   "packageManager": "pnpm@9.15.4",
   "engines": {
-    "node": ">=18"
+    "node": ">=22.13.0"
   }
 }

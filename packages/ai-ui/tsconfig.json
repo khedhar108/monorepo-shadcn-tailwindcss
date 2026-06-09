@@ -1,0 +1,22 @@
+{
+  "extends": "@repo/typescript-config/react-library.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "outDir": "dist",
+    "lib": ["es2023", "DOM", "DOM.Iterable"],
+    "paths": {
+      "@/*": ["./src/*"],
+      "@repo/ui/*": ["../ui/src/*"],
+      "@repo/ai-ui/*": ["./src/*"]
+    }
+  },
+  "include": ["src"],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "src/components/ai-elements/jsx-preview.tsx",
+    "src/components/ai-elements/speech-input.tsx",
+    "src/components/ai-elements/stack-trace.tsx",
+    "src/components/ai-elements/voice-selector.tsx"
+  ]
+}
