@@ -8,6 +8,7 @@ Lightweight log of significant technical decisions.
 |-----|-------|--------|
 | [ADR-001](./ADR-001-mastra-separate-app.md) | Mastra as separate `apps/agent` | Accepted |
 | [ADR-002](./ADR-002-node-22.md) | Require Node.js >=22.13.0 | Accepted |
+| [ADR-003](./ADR-003-submodule-removal.md) | Remove `apps/agent` submodule, track as normal files | Accepted |
 
 ## ADR template
 
