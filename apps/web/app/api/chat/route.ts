@@ -1,50 +1,47 @@
-import { FEEDBACK_AGENT_ID } from "../../../lib/mastra-client";
+import { createUIMessageStreamResponse } from "ai";
+import { FEEDBACK_AGENT_ID } from "../../../lib/agent-constants";
+import {
+  MastraGatewayError,
+  streamAgentToAiSdk,
+} from "../../../lib/mastra-client";
+import {
+  normalizeChatRequest,
+  runInputGuardrails,
+} from "../../../lib/mastra-guardrails";
 
+export const runtime = "nodejs";
 export const maxDuration = 60;
 
-type ChatRequestBody = {
-  agentId?: string;
-  messages?: unknown[];
-  memory?: {
-    thread?: string;
-    resource?: string;
-  };
-  requestContext?: Record<string, unknown>;
-};
-
 export async function POST(req: Request) {
-  const body = (await req.json()) as ChatRequestBody;
-  const agentId = body.agentId ?? FEEDBACK_AGENT_ID;
-  const mastraUrl = process.env.MASTRA_API_URL ?? "http://localhost:4111";
+  try {
+    const body = await req.json();
+    const chatRequest = normalizeChatRequest(body, FEEDBACK_AGENT_ID);
+    const inputGuardrail = await runInputGuardrails(chatRequest);
 
-  const upstream = await fetch(`${mastraUrl}/chat/${agentId}`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      messages: body.messages ?? [],
-      memory: body.memory,
-      requestContext: body.requestContext,
-    }),
-  });
+    if (!inputGuardrail.allowed) {
+      return Response.json(
+        { error: inputGuardrail.reason },
+        { status: inputGuardrail.status },
+      );
+    }
 
-  if (!upstream.ok) {
-    const errorText = await upstream.text();
+    const stream = await streamAgentToAiSdk(chatRequest);
+    const response = createUIMessageStreamResponse({ stream });
+
+    response.headers.set("Cache-Control", "no-cache, no-transform");
+    response.headers.set("X-Content-Type-Options", "nosniff");
+
+    return response;
+  } catch (error) {
+    if (error instanceof MastraGatewayError) {
+      return Response.json({ error: error.message }, { status: error.status });
+    }
+
     return Response.json(
       {
-        error: errorText || `Mastra chat request failed with ${upstream.status}`,
+        error: "Chat request failed.",
       },
-      { status: upstream.status },
+      { status: 500 },
     );
   }
-
-  return new Response(upstream.body, {
-    status: upstream.status,
-    headers: {
-      "Content-Type": upstream.headers.get("Content-Type") ?? "text/plain; charset=utf-8",
-      "Cache-Control": "no-cache, no-transform",
-      Connection: "keep-alive",
-    },
-  });
 }

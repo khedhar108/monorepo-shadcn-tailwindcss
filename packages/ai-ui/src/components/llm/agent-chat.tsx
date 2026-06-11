@@ -1,7 +1,12 @@
 "use client";
 
 import { useChat } from "@ai-sdk/react";
-import { DefaultChatTransport, type UIMessage } from "ai";
+import {
+  DefaultChatTransport,
+  type DynamicToolUIPart,
+  type ReasoningUIPart,
+  type UIMessage,
+} from "ai";
 import {
   Card,
   CardContent,
@@ -32,6 +37,19 @@ import {
   PromptInputTextarea,
 } from "../ai-elements/prompt-input";
 import { Suggestion, Suggestions } from "../ai-elements/suggestion";
+import {
+  Reasoning,
+  ReasoningContent,
+  ReasoningTrigger,
+} from "../ai-elements/reasoning";
+import {
+  Tool,
+  ToolContent,
+  ToolHeader,
+  ToolInput,
+  ToolOutput,
+  type ToolPart,
+} from "../ai-elements/tool";
 import { useChatThread } from "../../hooks/use-chat-thread";
 import { useLlmSelection } from "./llm-selection-context";
 
@@ -45,11 +63,84 @@ export type AgentChatProps = {
   className?: string;
 };
 
-function getMessageText(message: UIMessage): string {
-  return message.parts
-    .filter((part) => part.type === "text")
-    .map((part) => part.text)
-    .join("");
+function isToolPart(part: UIMessage["parts"][number]): part is ToolPart {
+  return part.type === "dynamic-tool" || part.type.startsWith("tool-");
+}
+
+function isDynamicToolPart(part: ToolPart): part is DynamicToolUIPart {
+  return part.type === "dynamic-tool";
+}
+
+function AgentToolPart({ part }: { part: ToolPart }) {
+  return (
+    <Tool defaultOpen={part.state !== "output-available"}>
+      {isDynamicToolPart(part) ? (
+        <ToolHeader state={part.state} toolName={part.toolName} type={part.type} />
+      ) : (
+        <ToolHeader state={part.state} type={part.type} />
+      )}
+      <ToolContent>
+        <ToolInput input={part.input} />
+        <ToolOutput errorText={part.errorText} output={part.output} />
+      </ToolContent>
+    </Tool>
+  );
+}
+
+function MessageParts({
+  isAssistant,
+  isStreamingThisMessage,
+  message,
+}: {
+  isAssistant: boolean;
+  isStreamingThisMessage: boolean;
+  message: UIMessage;
+}) {
+  const renderedParts = message.parts.flatMap((part, index) => {
+    const key = `${message.id}-${index}`;
+
+    if (part.type === "text") {
+      if (!part.text) {
+        return [];
+      }
+
+      return [
+        isAssistant ? (
+          <MessageResponse key={key} isAnimating={isStreamingThisMessage}>
+            {part.text}
+          </MessageResponse>
+        ) : (
+          <span key={key}>{part.text}</span>
+        ),
+      ];
+    }
+
+    if (part.type === "reasoning") {
+      return [
+        <Reasoning
+          key={key}
+          isStreaming={part.state === "streaming"}
+        >
+          <ReasoningTrigger />
+          <ReasoningContent>{part.text}</ReasoningContent>
+        </Reasoning>,
+      ];
+    }
+
+    if (isToolPart(part)) {
+      return [<AgentToolPart key={key} part={part} />];
+    }
+
+    return [];
+  });
+
+  if (renderedParts.length > 0) {
+    return renderedParts;
+  }
+
+  return isStreamingThisMessage ? (
+    <MessageResponse isAnimating={isStreamingThisMessage}>Thinking...</MessageResponse>
+  ) : null;
 }
 
 type AgentChatInnerProps = AgentChatProps & {
@@ -149,7 +240,6 @@ function AgentChatInner({
               </ConversationEmptyState>
             ) : (
               messages.map((message) => {
-                const text = getMessageText(message);
                 const isAssistant = message.role === "assistant";
                 const isStreamingThisMessage =
                   isBusy && isAssistant && message.id === lastMessage?.id;
@@ -157,13 +247,11 @@ function AgentChatInner({
                 return (
                   <Message key={message.id} from={message.role}>
                     <MessageContent>
-                      {isAssistant ? (
-                        <MessageResponse isAnimating={isStreamingThisMessage}>
-                          {text || (isStreamingThisMessage ? "Thinking..." : "")}
-                        </MessageResponse>
-                      ) : (
-                        text
-                      )}
+                      <MessageParts
+                        isAssistant={isAssistant}
+                        isStreamingThisMessage={isStreamingThisMessage}
+                        message={message}
+                      />
                     </MessageContent>
                   </Message>
                 );

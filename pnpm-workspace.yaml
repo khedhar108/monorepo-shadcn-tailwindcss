@@ -10,6 +10,10 @@ catalog:
   tailwindcss: ^4.3.0
   "@tailwindcss/postcss": ^4.3.0
   "@tailwindcss/cli": ^4.3.0
+  ai: ^6.0.198
+  "@ai-sdk/react": ^3.0.200
+  "@mastra/ai-sdk": ^1.4.3
+  "@mastra/client-js": ^1.23.2
   lucide-react: ^0.469.0
   eslint: ^9.39.1
   "@types/node": ^22.15.3

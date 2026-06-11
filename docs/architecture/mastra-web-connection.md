@@ -8,52 +8,75 @@ How `apps/agent` (Mastra on `:4111`) connects to `apps/web` (Next.js on `:3000`)
 
 ```mermaid
 flowchart TB
-  subgraph browser ["Browser"]
-    Page["apps/web — page.tsx"]
+  subgraph browser ["Browser (client)"]
+    Page["page.tsx"]
     Picker["ModelPickerTrigger"]
+    Dialog["ModelPickerDialog"]
+    LSC["LlmSelectionProvider"]
+    AC["AgentChat — useChat transport"]
   end
 
   subgraph web ["apps/web — Next.js :3000"]
-    Route["/api/chat — raw fetch proxy"]
-    SA["Server Actions — provider discovery"]
-    Client["lib/mastra-client.ts"]
+    SA["Server Action<br/>getAvailableProviders()"]
+    Route["POST /api/chat"]
+    Gateway["lib/mastra-client.ts<br/>MastraClient gateway"]
+    Guardrails["lib/mastra-guardrails.ts"]
   end
 
-  subgraph aiui ["packages/ai-ui — @repo/ai-ui"]
-    AC["AgentChat — streaming chat component"]
-    MPD["ModelPickerDialog"]
-    LSC["LlmSelectionProvider — React context"]
-    Hook["useChatThread — sessionStorage thread ID"]
-    Types["lib/types.ts — LlmSelection, ProviderGroup"]
-  end
-
-  subgraph ui ["packages/ui — @repo/ui"]
-    Shadcn["Button · Card · Dialog · Select · Separator"]
+  subgraph aiui ["packages/ai-ui"]
+    Types["ProviderGroup · LlmSelection"]
   end
 
   subgraph agent ["apps/agent — Mastra :4111"]
-    Config["model-providers.ts — providers, models, env keys"]
-    Resolve["resolveAgentModel — reads requestContext"]
-    ProvTool["getAvailableProvidersTool — tool endpoint"]
-    Agent["feedbackSummarizer — agent"]
+    Tool["getAvailableProvidersTool"]
+    Catalog["provider-catalog.ts<br/>reads @mastra/core registry"]
+    Registry[("@mastra/core<br/>provider-registry.json")]
+    Defaults["model-providers.ts<br/>defaults + API key env vars"]
+    Resolve["resolveAgentModel()"]
+    FBAgent["feedbackSummarizer agent"]
     Memory["ObservationalMemory"]
   end
 
-  Page --> AC
   Page --> Picker
-  Picker --> MPD
-  MPD --> Shadcn
-  MPD --> LSC
-  AC --> Shadcn
-  AC --> Hook
+  Picker --> Dialog
+  Dialog --> LSC
+  Page --> AC
   AC --> LSC
-  Route --> Agent
-  SA --> ProvTool
-  Agent --> Resolve
-  Resolve --> Config
-  ProvTool --> Config
-  Agent --> Memory
+
+  Page -->|"useEffect on mount"| SA
+  SA --> Gateway
+  Gateway -->|"executeTool(get-available-providers)"| Tool
+  Tool --> Catalog
+  Catalog --> Registry
+  Catalog --> Defaults
+  Tool --> Defaults
+  SA --> Types
+
+  AC -->|"POST messages + requestContext"| Route
+  Route --> Guardrails
+  Route --> Gateway
+  Gateway -->|"agent.stream()"| FBAgent
+  FBAgent --> Resolve
+  Resolve --> Defaults
+  FBAgent --> Memory
 ```
+
+### Provider / model discovery flow
+
+1. **Browser** calls the server action `getAvailableProviders()` on page load.
+2. **Server action** calls `fetchProviderCatalog()` in `mastra-client.ts` (single gateway).
+3. **Gateway** invokes `get-available-providers` on the Mastra agent via `@mastra/client-js`.
+4. **Agent tool** checks which providers have API keys set (`OPENAI_API_KEY`, `GROQ_API_KEY`, etc.).
+5. **For each connected provider**, `provider-catalog.ts` reads `@mastra/core/dist/provider-registry.json`, sorts models newest-first (same heuristic as `provider-registry.mjs`), filters non-chat models, and returns up to 8 latest models. Project defaults (`agent` / `memory` roles) are always included.
+6. **Server action** maps the tool response to `ProviderGroup[]` for `@repo/ai-ui` — no model list is hardcoded in the web UI.
+7. **Model picker** renders grouped models; selection is stored in `localStorage` via `LlmSelectionProvider`.
+
+### Chat streaming flow
+
+1. **AgentChat** sends `requestContext: { llmModel, llmProvider }` with each message.
+2. **`/api/chat`** normalizes the body, runs input guardrails, then calls `streamAgentToAiSdk()`.
+3. **Gateway** streams from Mastra; **`resolveAgentModel()`** on the agent picks the model (`llmModel` → `llmProvider` default → env default).
+4. Response is converted to AI SDK UI stream format via `@mastra/ai-sdk` and returned to the browser.
 
 ---
 
@@ -61,25 +84,35 @@ flowchart TB
 
 | Layer | Owns | Does NOT own |
 |-------|------|--------------|
-| **`apps/agent`** | Agents, tools, memory, model resolution, provider config, API keys, scorers, observability | React, UI, pages |
+| **`apps/agent`** | Agents, tools, memory, model resolution, provider config, API keys, observability | React, UI, pages |
 | **`packages/ai-ui`** (`@repo/ai-ui`) | Reusable AI UI components (chat, model picker, contexts, hooks), shared types | Server logic, Mastra SDK imports, API keys |
 | **`packages/ui`** (`@repo/ui`) | Design system primitives (Button, Card, Dialog, Select), CSS tokens | AI deps, business logic |
-| **`apps/web`** | Page composition, API proxy route, server actions, layout | Mastra agent logic, component internals |
+| **`apps/web`** | Page composition, guarded API route, server actions, Mastra client gateway | Mastra agent logic, component internals |
 
 Any future app (`apps/mobile`, `apps/admin`) imports the same `@repo/ai-ui` components and talks to the same `apps/agent` backend.
 
 ---
 
-## Why raw fetch proxy — not `@mastra/ai-sdk`
+## Why Mastra Client Gateway
 
-`@mastra/ai-sdk` is for the **embedded pattern** (Mastra runs _inside_ Next.js). Our architecture is **separate backend** — the agent runs independently.
+Mastra runs as a **separate backend** in `apps/agent`. The web app should not import the Mastra instance or provider keys. Instead, `apps/web` owns a small server-only gateway built around `@mastra/client-js`.
 
 | Approach | When to use |
 |----------|-------------|
 | `@mastra/ai-sdk` + `handleChatStream()` | Single-app, Mastra embedded in Next.js |
-| **Raw `fetch()` proxy** (our approach) | Separate backend, monorepo, multi-app consumers |
+| **`@mastra/client-js` gateway** (our approach) | Separate backend, monorepo, multi-app consumers |
 
-The raw proxy keeps `apps/web` as a pass-through. All AI logic stays in `apps/agent`. The same Mastra server serves Studio, the web app, and any future client.
+The gateway centralizes:
+
+- Mastra base URL and retry behavior
+- Allowed agent IDs
+- Tool execution
+- AI SDK stream conversion
+- Input and output guardrail hooks
+
+`@mastra/ai-sdk` is still used in `apps/web`, but only as a **server-side stream adapter** (`toAISdkStream`) so `@repo/ai-ui` can keep using AI SDK UI components. The React chat hook (`@ai-sdk/react`) remains owned by `@repo/ai-ui`.
+
+Studio is not part of the production chat path. It is a developer UI for inspecting and testing the Mastra app. The Next.js interface only needs the Mastra server URL in `MASTRA_API_URL`, and `/api/chat` forwards requests to that server-side endpoint.
 
 ---
 
@@ -109,14 +142,13 @@ apps/agent/
     ├── agents/
     │   └── feedback-summarizer.ts      # feedbackSummarizer agent
     ├── config/
-    │   └── model-providers.ts          # PROVIDER_MODELS, resolveAgentModel(), getConnectedProviders()
+    │   ├── model-providers.ts          # PROVIDER_MODELS, resolveAgentModel(), env key map
+    │   └── provider-catalog.ts         # reads Mastra registry, getConnectedProviders()
     ├── tools/
     │   ├── get-feedback.ts             # feedback retrieval + pagination
     │   └── get-available-providers.ts  # [NEW] reports which providers have API keys
-    ├── scorers/
-    │   └── feedback-scorers.ts         # actionability + completeness evals
     ├── data/
-    │   └── feedback.ts                 # 75 static feedback items (demo data)
+    │   └── feedback.ts                 # static feedback items (demo data)
     └── public/
         └── mastra.db                   # LibSQL storage
 ```
@@ -147,17 +179,18 @@ packages/ai-ui/
 ```
 apps/web/
 ├── .env.local                          # MASTRA_API_URL only (gitignored)
-├── package.json                        # web — @mastra/client-js, @repo/ai-ui, @repo/ui, ai, @ai-sdk/react
+├── package.json                        # web — @mastra/client-js, @mastra/ai-sdk, ai, @repo/ai-ui, @repo/ui
 ├── next.config.js                      # transpilePackages: ["@repo/ui", "@repo/ai-ui"]
 ├── tsconfig.json                       # extends @repo/typescript-config/nextjs
 ├── lib/
-│   └── mastra-client.ts               # ✅ MastraClient + FEEDBACK_AGENT_ID
+│   ├── mastra-client.ts               # ✅ MastraClient gateway + agent registry
+│   └── mastra-guardrails.ts           # ✅ input/output guardrail hooks
 └── app/
     ├── layout.tsx                      # root layout — fonts, global CSS
     ├── page.tsx                        # ✅ primary chat page — AgentChat + ModelPicker
     ├── api/
     │   └── chat/
-    │       └── route.ts               # ✅ raw fetch proxy → Mastra /chat/:agentId
+    │       └── route.ts               # ✅ guarded stream route → MastraClient
     └── llm/
         └── actions.ts                 # [NEW] server action — fetch providers from agent
 ```
@@ -183,9 +216,11 @@ packages/ui/
 |-----------|------|--------|
 | Mastra agent with memory + tools | [`feedback-summarizer.ts`](../../apps/agent/src/mastra/agents/feedback-summarizer.ts) | ✅ |
 | Multi-provider model config | [`model-providers.ts`](../../apps/agent/src/mastra/config/model-providers.ts) | ✅ — supports openai, groq, nvidia, sarvam |
+| Dynamic model catalog from Mastra registry | [`provider-catalog.ts`](../../apps/agent/src/mastra/config/provider-catalog.ts) | ✅ — up to 8 latest models per connected provider |
 | `requestContext` dynamic model resolution | [`resolveAgentModel()`](../../apps/agent/src/mastra/config/model-providers.ts) | ✅ — per-provider; per-model override needed |
-| Mastra client in web | [`mastra-client.ts`](../../apps/web/lib/mastra-client.ts) | ✅ |
-| Streaming chat proxy | [`/api/chat/route.ts`](../../apps/web/app/api/chat/route.ts) | ✅ — forwards `messages`, `memory`, `requestContext` |
+| Mastra gateway in web | [`mastra-client.ts`](../../apps/web/lib/mastra-client.ts) | ✅ — agent registry, typed client, stream adapter |
+| Guardrail hooks | [`mastra-guardrails.ts`](../../apps/web/lib/mastra-guardrails.ts) | ✅ — normalizes input and provides input/output policy hooks |
+| Streaming chat route | [`/api/chat/route.ts`](../../apps/web/app/api/chat/route.ts) | ✅ — validates request, calls MastraClient, returns AI SDK stream |
 | `AgentChat` component | [`agent-chat.tsx`](../../packages/ai-ui/src/components/llm/agent-chat.tsx) | ✅ — `useChat`, `DefaultChatTransport`, thread memory |
 | Thread memory hook | [`use-chat-thread.ts`](../../packages/ai-ui/src/hooks/use-chat-thread.ts) | ✅ — sessionStorage UUID |
 | `@repo/ai-ui` package setup | [`package.json`](../../packages/ai-ui/package.json) | ✅ — exports, deps, `components.json` |
@@ -423,17 +458,12 @@ export type AvailableProvidersResult = {
 };
 
 export async function getAvailableProviders(): Promise<AvailableProvidersResult> {
-  const mastraUrl = process.env.MASTRA_API_URL ?? "http://localhost:4111";
-
-  const res = await fetch(`${mastraUrl}/api/tools/get-available-providers/execute`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ data: {} }),
-    cache: "no-store",
+  const data = await executeAgentTool<ProviderToolResponse>({
+    agentId: FEEDBACK_AGENT_ID,
+    toolId: "get-available-providers",
+    data: {},
   });
 
-  if (!res.ok) return { providers: [], activeProvider: null };
-  const data = await res.json();
   return {
     providers: transformToProviderGroups(data),
     activeProvider: data.activeProvider ?? null,
@@ -488,13 +518,16 @@ sequenceDiagram
   participant P as ModelPicker
   participant C as AgentChat
   participant R as /api/chat
+  participant G as MastraClient gateway
   participant M as Mastra :4111
 
   Note over B: Page loads
   B->>P: Open model picker
   P->>R: Server Action → getAvailableProviders()
-  R->>M: POST /api/tools/get-available-providers/execute { data: {} }
-  M-->>R: { providers: [...], activeProvider }
+  R->>G: executeAgentTool("get-available-providers")
+  G->>M: Agent tool execution
+  M-->>G: { providers: [...], activeProvider }
+  G-->>R: Provider data
   R-->>P: ProviderGroup[]
   P->>P: User selects "groq / llama-3.3-70b-versatile"
   P->>C: LlmSelectionContext updates
@@ -503,11 +536,14 @@ sequenceDiagram
   C->>C: useChat → DefaultChatTransport
   C->>R: POST /api/chat
   Note right of C: body: { agentId, messages,<br/>memory: { thread, resource },<br/>requestContext: { llmModel, llmProvider } }
-  R->>M: POST /chat/feedbackSummarizer (forwarded body)
+  R->>R: normalize input + run input guardrails
+  R->>G: streamAgentToAiSdk()
+  G->>M: agent.stream(messages, options)
   M->>M: resolveAgentModel() reads llmModel from requestContext
   M->>M: Uses "groq/llama-3.3-70b-versatile"
-  M-->>R: SSE stream
-  R-->>C: Piped stream
+  M-->>G: Mastra data stream
+  G-->>R: AI SDK UI stream
+  R-->>C: Guarded AI SDK stream
   C->>B: Renders tokens in real-time
 ```
 
@@ -625,6 +661,7 @@ flowchart LR
   web["apps/web"] --> aiui["@repo/ai-ui"]
   web --> ui["@repo/ui"]
   web --> client["@mastra/client-js"]
+  web --> adapter["@mastra/ai-sdk + ai server helpers"]
   aiui --> ui
   aiui --> aisdk["ai + @ai-sdk/react"]
   agent["apps/agent"] --> mastra["@mastra/core + memory + libsql"]
@@ -636,7 +673,7 @@ flowchart LR
 | `apps/agent` (`@repo/agent`) | `@mastra/core`, `@mastra/memory`, `@mastra/libsql`, `@mastra/loggers`, `@mastra/observability`, `@mastra/evals`, `zod` |
 | `packages/ai-ui` (`@repo/ai-ui`) | `ai`, `@ai-sdk/react`, `@repo/ui` (workspace), `react`/`react-dom` (peer) |
 | `packages/ui` (`@repo/ui`) | `@radix-ui/*`, `class-variance-authority`, `clsx`, `tailwind-merge`, `lucide-react` |
-| `apps/web` (`web`) | `@mastra/client-js`, `@repo/ai-ui` (workspace), `@repo/ui` (workspace), `next`, `ai`, `@ai-sdk/react` |
+| `apps/web` (`web`) | `@mastra/client-js`, `@mastra/ai-sdk`, `ai`, `@repo/ai-ui` (workspace), `@repo/ui` (workspace), `next` |
 
 ---
 
@@ -646,7 +683,8 @@ flowchart LR
 
 ```bash
 pnpm dev:agent
-# → Mastra Studio at http://localhost:4111
+# → Mastra API server at http://localhost:4111
+# → Studio is available there for local debugging, but the web UI does not depend on it.
 ```
 
 Verify the providers tool is registered:

@@ -11,7 +11,8 @@
     "dev": {
       "dependsOn": ["^build"],
       "cache": false,
-      "persistent": true
+      "persistent": true,
+      "env": ["MASTRA_API_URL"]
     },
     "lint": {
       "dependsOn": ["^lint"]

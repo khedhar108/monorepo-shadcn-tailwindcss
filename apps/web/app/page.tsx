@@ -28,13 +28,12 @@ import {
   Terminal,
   Layers,
   CheckCircle2,
-  ExternalLink,
   BookOpen,
   GitBranch,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { getAvailableProviders } from "./llm/actions";
-import { FEEDBACK_AGENT_ID } from "../lib/mastra-client";
+import { FEEDBACK_AGENT_ID } from "../lib/agent-constants";
 
 const examplePrompts = [
   "Summarize all customer feedback",
@@ -45,8 +44,18 @@ const examplePrompts = [
 const packages = [
   { name: "web", type: "Next.js App", path: "apps/web", status: "Active" },
   { name: "agent", type: "Mastra Agent", path: "apps/agent", status: "Active" },
-  { name: "@repo/ai-ui", type: "AI Chat UI", path: "packages/ai-ui", status: "Active" },
-  { name: "@repo/ui", type: "Shared UI Library", path: "packages/ui", status: "Active" },
+  {
+    name: "@repo/ai-ui",
+    type: "AI Chat UI",
+    path: "packages/ai-ui",
+    status: "Active",
+  },
+  {
+    name: "@repo/ui",
+    type: "Shared UI Library",
+    path: "packages/ui",
+    status: "Active",
+  },
   { name: "docs", type: "Next.js App", path: "apps/docs", status: "Active" },
 ];
 
@@ -55,37 +64,42 @@ function HomeContent() {
   const { setSelection } = useLlmSelection();
 
   useEffect(() => {
-    void getAvailableProviders().then(({ providers: nextProviders, activeProvider }) => {
-      setProviders(nextProviders);
+    void getAvailableProviders().then(
+      ({ providers: nextProviders, activeProvider }) => {
+        setProviders(nextProviders);
 
-      if (nextProviders.length === 0) {
-        return;
-      }
-
-      try {
-        if (localStorage.getItem("aria-llm-selection")) {
+        if (nextProviders.length === 0) {
           return;
         }
-      } catch {
-        // ignore storage errors
-      }
 
-      const active =
-        nextProviders.find((provider) => provider.provider === activeProvider) ??
-        nextProviders.find((provider) => provider.connected) ??
-        nextProviders[0];
+        try {
+          if (localStorage.getItem("aria-llm-selection")) {
+            return;
+          }
+        } catch {
+          // ignore storage errors
+        }
 
-      const defaultModel =
-        active?.models.find((model) => model.role === "agent") ?? active?.models[0];
+        const active =
+          nextProviders.find(
+            (provider) => provider.provider === activeProvider,
+          ) ??
+          nextProviders.find((provider) => provider.connected) ??
+          nextProviders[0];
 
-      if (active && defaultModel) {
-        setSelection({
-          provider: active.provider,
-          model: defaultModel.id,
-          displayName: defaultModel.name,
-        });
-      }
-    });
+        const defaultModel =
+          active?.models.find((model) => model.role === "agent") ??
+          active?.models[0];
+
+        if (active && defaultModel) {
+          setSelection({
+            provider: active.provider,
+            model: defaultModel.id,
+            displayName: defaultModel.name,
+          });
+        }
+      },
+    );
   }, [setSelection]);
 
   return (
@@ -100,7 +114,8 @@ function HomeContent() {
             Welcome Pradeep
           </h1>
           <p className="text-base sm:text-lg text-neutral-500 dark:text-neutral-400 font-medium">
-            Chat with the feedback summarizer agent. Responses stream from Mastra on port 4111.
+            Chat with the feedback summarizer agent. Responses stream from
+            Mastra on port 4111.
           </p>
         </header>
 
@@ -108,7 +123,10 @@ function HomeContent() {
           <p className="text-sm text-neutral-500 dark:text-neutral-400">
             Choose a model for this session, then send a message below.
           </p>
-          <ModelPickerTrigger providers={providers} className="w-full sm:w-auto sm:min-w-72" />
+          <ModelPickerTrigger
+            providers={providers}
+            className="w-full sm:w-auto sm:min-w-72"
+          />
         </div>
 
         <AgentChat
@@ -141,10 +159,18 @@ function HomeContent() {
               <Table>
                 <TableHeader className="bg-neutral-50 dark:bg-neutral-900/50">
                   <TableRow>
-                    <TableHead className="font-semibold text-neutral-600 dark:text-neutral-400">Package Name</TableHead>
-                    <TableHead className="font-semibold text-neutral-600 dark:text-neutral-400">Type</TableHead>
-                    <TableHead className="font-semibold text-neutral-600 dark:text-neutral-400">Path</TableHead>
-                    <TableHead className="text-right font-semibold text-neutral-600 dark:text-neutral-400">Status</TableHead>
+                    <TableHead className="font-semibold text-neutral-600 dark:text-neutral-400">
+                      Package Name
+                    </TableHead>
+                    <TableHead className="font-semibold text-neutral-600 dark:text-neutral-400">
+                      Type
+                    </TableHead>
+                    <TableHead className="font-semibold text-neutral-600 dark:text-neutral-400">
+                      Path
+                    </TableHead>
+                    <TableHead className="text-right font-semibold text-neutral-600 dark:text-neutral-400">
+                      Status
+                    </TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -177,24 +203,20 @@ function HomeContent() {
             <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="text-xs text-neutral-400 dark:text-neutral-500 flex items-center gap-1.5 font-medium">
                 <CheckCircle2 className="size-3.5 text-emerald-500" />
-                <span>Run <code>pnpm dev:web+agent</code> before chatting</span>
+                <span>
+                  Run <code>pnpm dev:web+agent</code> before chatting
+                </span>
               </div>
               <div className="flex items-center gap-3">
                 <Button
                   variant="outline"
                   className="flex items-center justify-center gap-2 border-neutral-200 dark:border-neutral-800 hover:bg-neutral-50 dark:hover:bg-neutral-800"
-                  onClick={() => window.open("https://turborepo.dev/docs", "_blank")}
+                  onClick={() =>
+                    window.open("https://turborepo.dev/docs", "_blank")
+                  }
                 >
                   <BookOpen className="size-4 text-neutral-500 dark:text-neutral-400" />
                   <span>Read Docs</span>
-                </Button>
-                <Button
-                  variant="default"
-                  className="flex items-center justify-center gap-2 bg-neutral-900 text-white hover:bg-neutral-800 dark:bg-neutral-100 dark:text-neutral-950 dark:hover:bg-neutral-200 shadow-md font-semibold"
-                  onClick={() => window.open("http://localhost:4111", "_blank")}
-                >
-                  <ExternalLink className="size-4" />
-                  <span>Mastra Studio</span>
                 </Button>
               </div>
             </div>
@@ -208,10 +230,11 @@ function HomeContent() {
               Streaming chat route
             </AlertTitle>
             <AlertDescription className="text-xs text-neutral-500 dark:text-neutral-400 mt-1 leading-relaxed">
-              The browser calls <code>/api/chat</code>, which proxies to{" "}
-              <code>{`{MASTRA_API_URL}/chat/${FEEDBACK_AGENT_ID}`}</code> with observational memory thread
-              IDs and optional <code>requestContext</code> from the model picker. Provider keys stay in{" "}
-              <code>apps/agent/.env.local</code>.
+              The browser calls <code>/api/chat</code>, which streams via the
+              Mastra Client gateway to <code>{`{MASTRA_API_URL}`}</code> agent{" "}
+              <code>{FEEDBACK_AGENT_ID}</code> with observational memory thread
+              IDs and optional <code>requestContext</code> from the model
+              picker. Provider keys stay in <code>apps/agent/.env.local</code>.
             </AlertDescription>
           </div>
         </Alert>

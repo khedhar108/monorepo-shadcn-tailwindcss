@@ -1,0 +1,24 @@
+
+> aria@ dev:agent D:\MajorProjectSem4\major-aria\aria
+> turbo run dev --filter=@repo/agent
+
+
+   • Packages in scope: @repo/agent
+   • Running dev in 1 packages
+   • Remote caching disabled
+
+@repo/agent:dev: cache bypass, force executing 7c66a5a47b84cd1a
+@repo/agent:dev: 
+@repo/agent:dev: > @repo/agent@1.0.0 dev D:\MajorProjectSem4\major-aria\aria\apps\agent
+@repo/agent:dev: > mastra dev
+@repo/agent:dev: 
+@repo/agent:dev: [1m[36m◐[39m[22m Preparing development environment...
+@repo/agent:dev: [1m[32m✓[39m[22m [32mInitial bundle complete[39m
+@repo/agent:dev: [1m[34m◇[39m[22m [34mStarting Mastra dev server...[39m
+@repo/agent:dev: 
+@repo/agent:dev: [7m[32m mastra [39m[27m [32m1.12.2[39m [90mready in[39m 6395 ms
+@repo/agent:dev: 
+@repo/agent:dev: [2m│[22m [1mStudio:[22m [36mhttp://localhost:4111[39m
+@repo/agent:dev: [2m│[22m [1mAPI:[22m    http://localhost:4111/api
+@repo/agent:dev: 
+@repo/agent:dev: [2m◯[22m [2mwatching for file changes...[22m
