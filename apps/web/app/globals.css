@@ -4,14 +4,48 @@
 @theme {
   --font-sans: var(--font-geist-sans), sans-serif;
   --font-mono: var(--font-geist-mono), monospace;
+  --container-8xl: 1800px;
+  --radius-4xl: 2rem;
+  --spacing-128: 32rem;
+  --spacing-160: 40rem;
+  --ease-smooth: cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 @source "../**/*.{js,ts,jsx,tsx}";
+
+/* ── ARIA Design Tokens ─────────────────────────────────── */
+
+:root {
+  --aria-surface: #FAFAF8;
+  --aria-surface-raised: #FFFFFF;
+  --aria-surface-inset: #F4F3F0;
+  --aria-border: #E8E5E0;
+  --aria-border-subtle: #F0EEED;
+  --aria-text-primary: #1A1A1A;
+  --aria-text-secondary: #6B6B6B;
+  --aria-text-tertiary: #9C9C9C;
+  --aria-accent: #0D9488;
+  --aria-accent-hover: #0F766E;
+  --aria-accent-soft: #CCFBF1;
+  --aria-accent-muted: #F0FDFA;
+  --aria-emerald: #059669;
+  --aria-emerald-soft: #D1FAE5;
+  --aria-amber: #D97706;
+  --aria-amber-soft: #FEF3C7;
+  --aria-shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.04), 0 1px 2px rgba(0, 0, 0, 0.03);
+  --aria-shadow-md: 0 4px 16px rgba(0, 0, 0, 0.06), 0 1px 4px rgba(0, 0, 0, 0.04);
+  --aria-shadow-lg: 0 12px 40px rgba(0, 0, 0, 0.08), 0 4px 12px rgba(0, 0, 0, 0.04);
+  --aria-shadow-xl: 0 20px 60px rgba(0, 0, 0, 0.1), 0 8px 20px rgba(0, 0, 0, 0.05);
+}
+
+/* ── Base ────────────────────────────────────────────────── */
 
 html,
 body {
   max-width: 100vw;
   overflow-x: hidden;
+  background: var(--aria-surface);
+  color: var(--aria-text-primary);
 }
 
 @layer base {
@@ -22,4 +56,201 @@ body {
     color: inherit;
     text-decoration: none;
   }
+}
+
+/* ── Keyframe Animations ─────────────────────────────────── */
+
+@keyframes aria-fade-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes aria-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes aria-pulse-ring {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(13, 148, 136, 0.5);
+  }
+  50% {
+    box-shadow: 0 0 0 6px rgba(13, 148, 136, 0);
+  }
+}
+
+@keyframes aria-spin-slow {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@keyframes aria-shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+@keyframes aria-breathe {
+  0%, 100% { opacity: 0.5; transform: scale(1); }
+  50% { opacity: 0.75; transform: scale(1.03); }
+}
+
+@keyframes aria-overlay-in {
+  from {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* ── Utility Classes ─────────────────────────────────────── */
+
+.aria-fade-in-up {
+  animation: aria-fade-in-up 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.aria-fade-in {
+  animation: aria-fade-in 0.35s ease both;
+}
+
+.aria-pulse-ring {
+  animation: aria-pulse-ring 2.4s ease-in-out infinite;
+}
+
+.aria-spin-slow {
+  animation: aria-spin-slow 8s linear infinite;
+}
+
+.aria-shimmer {
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(13, 148, 136, 0.04) 50%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+  animation: aria-shimmer 3s ease-in-out infinite;
+}
+
+.aria-breathe {
+  animation: aria-breathe 6s ease-in-out infinite;
+}
+
+/* Staggered entrance — apply aria-stagger-N for delay */
+.aria-stagger-1 { animation-delay: 0.06s; }
+.aria-stagger-2 { animation-delay: 0.12s; }
+.aria-stagger-3 { animation-delay: 0.18s; }
+.aria-stagger-4 { animation-delay: 0.24s; }
+.aria-stagger-5 { animation-delay: 0.30s; }
+
+/* ── Glass Panel (Light) ─────────────────────────────────── */
+
+.aria-glass {
+  background: rgba(255, 255, 255, 0.82);
+  backdrop-filter: blur(24px) saturate(1.3);
+  border: 1px solid var(--aria-border);
+  box-shadow: var(--aria-shadow-sm), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+
+.aria-glass-strong {
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(40px) saturate(1.4);
+  border: 1px solid var(--aria-border);
+  box-shadow: var(--aria-shadow-md), inset 0 1px 0 rgba(255, 255, 255, 1);
+}
+
+/* ── Surface Panels ──────────────────────────────────────── */
+
+.aria-panel {
+  background: var(--aria-surface-raised);
+  border: 1px solid var(--aria-border);
+  border-radius: 1rem;
+  box-shadow: var(--aria-shadow-sm);
+}
+
+.aria-panel-elevated {
+  background: var(--aria-surface-raised);
+  border: 1px solid var(--aria-border);
+  border-radius: 1.25rem;
+  box-shadow: var(--aria-shadow-md);
+}
+
+/* ── Dot Grid Background ─────────────────────────────────── */
+
+.aria-dot-grid {
+  background-image: radial-gradient(circle, #D5D3CE 0.7px, transparent 0.7px);
+  background-size: 24px 24px;
+  background-position: 0 0;
+}
+
+/* ── Custom Scrollbar (Light) ─────────────────────────────── */
+
+@layer base {
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: #D1CFC9 transparent;
+  }
+
+  *::-webkit-scrollbar {
+    width: 5px;
+    height: 5px;
+  }
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  *::-webkit-scrollbar-thumb {
+    background: #D1CFC9;
+    border-radius: 999px;
+  }
+  *::-webkit-scrollbar-thumb:hover {
+    background: #A8A6A0;
+  }
+}
+
+/* ── Graph Overlay ───────────────────────────────────────── */
+
+.aria-graph-overlay {
+  animation: aria-overlay-in 0.3s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.aria-graph-overlay-backdrop {
+  background: rgba(250, 250, 248, 0.85);
+  backdrop-filter: blur(20px) saturate(1.2);
+}
+
+/* ── Sidebar Transition ──────────────────────────────────── */
+
+.aria-sidebar-enter {
+  transition:
+    transform 0.3s cubic-bezier(0.16, 1, 0.3, 1),
+    opacity 0.3s ease;
+}
+
+.aria-sidebar-open {
+  transform: translateX(0);
+  opacity: 1;
+}
+
+.aria-sidebar-closed {
+  transform: translateX(-100%);
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* ── Accent Glow (Subtle) ────────────────────────────────── */
+
+.aria-glow-accent {
+  box-shadow: 0 0 20px rgba(13, 148, 136, 0.1);
+}
+
+.aria-glow-emerald {
+  box-shadow: 0 0 12px rgba(5, 150, 105, 0.15);
 }

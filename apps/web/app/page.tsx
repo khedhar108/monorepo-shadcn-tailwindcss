@@ -6,90 +6,80 @@ import {
   useLlmSelection,
 } from "@repo/ai-ui/components/llm/llm-selection-context";
 import { ModelPickerTrigger } from "@repo/ai-ui/components/llm/model-picker-trigger";
+import { KnowledgeGraph } from "@repo/ai-ui/components/graph/KnowledgeGraph";
+import { ChatHistory } from "@repo/ai-ui/components/history/ChatHistory";
 import type { ProviderGroup } from "@repo/ai-ui/lib/types";
-import { Alert, AlertDescription, AlertTitle } from "@repo/ui/components/alert";
 import { Button } from "@repo/ui/components/button";
+import { cn } from "@repo/ui/lib/utils";
 import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@repo/ui/components/card";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@repo/ui/components/table";
-import {
-  Terminal,
-  Layers,
-  CheckCircle2,
-  BookOpen,
-  GitBranch,
+  Maximize2,
+  Menu,
+  Minimize2,
+  RefreshCcw,
+  Sparkles,
+  Stars,
+  X,
+  Zap,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { getAvailableProviders } from "./llm/actions";
-import { FEEDBACK_AGENT_ID } from "../lib/agent-constants";
+import { ARIA_AGENT_ID } from "../lib/agent-constants";
 
-const examplePrompts = [
-  "Summarize all customer feedback",
-  "What are the critical issues from enterprise customers?",
-  "Show me only the feature requests from pro users",
-];
+/* ── Constants ── */
 
-const packages = [
-  { name: "web", type: "Next.js App", path: "apps/web", status: "Active" },
-  { name: "agent", type: "Mastra Agent", path: "apps/agent", status: "Active" },
-  {
-    name: "@repo/ai-ui",
-    type: "AI Chat UI",
-    path: "packages/ai-ui",
-    status: "Active",
-  },
-  {
-    name: "@repo/ui",
-    type: "Shared UI Library",
-    path: "packages/ui",
-    status: "Active",
-  },
-  { name: "docs", type: "Next.js App", path: "apps/docs", status: "Active" },
-];
+const GRAPH_USER_ID = "aria-local-user";
+
+const EXAMPLE_PROMPTS = [
+  "Help me plan the ARIA knowledge graph experience",
+  "Explain how feedback should change your future answers",
+  "What patterns have I been exploring recently?",
+] as const;
+
+/* ── Hooks ── */
+
+function useGraphVersion() {
+  const [version, setVersion] = useState(0);
+  const refresh = useCallback(() => setVersion((c) => c + 1), []);
+  return { version, refresh } as const;
+}
+
+/* ── Home Content ── */
 
 function HomeContent() {
   const [providers, setProviders] = useState<ProviderGroup[]>([]);
   const { setSelection } = useLlmSelection();
+  const { version: graphVersion, refresh: refreshGraph } = useGraphVersion();
+  const [currentThreadId, setCurrentThreadId] = useState<string | null>(null);
+  const [mobileHistoryOpen, setMobileHistoryOpen] = useState(false);
+  const [graphExpanded, setGraphExpanded] = useState(false);
+  const [demoMode, setDemoMode] = useState(false);
 
+  /* Read cached thread on mount */
+  useEffect(() => {
+    setCurrentThreadId(sessionStorage.getItem("aria-chat-thread-id"));
+  }, []);
+
+  /* Load providers once */
   useEffect(() => {
     void getAvailableProviders().then(
       ({ providers: nextProviders, activeProvider }) => {
         setProviders(nextProviders);
 
-        if (nextProviders.length === 0) {
-          return;
-        }
+        if (nextProviders.length === 0) return;
 
         try {
-          if (localStorage.getItem("aria-llm-selection")) {
-            return;
-          }
+          if (localStorage.getItem("aria-llm-selection")) return;
         } catch {
-          // ignore storage errors
+          // Storage unavailable in private browsing.
         }
 
         const active =
-          nextProviders.find(
-            (provider) => provider.provider === activeProvider,
-          ) ??
-          nextProviders.find((provider) => provider.connected) ??
+          nextProviders.find((p) => p.provider === activeProvider) ??
+          nextProviders.find((p) => p.connected) ??
           nextProviders[0];
 
         const defaultModel =
-          active?.models.find((model) => model.role === "agent") ??
-          active?.models[0];
+          active?.models.find((m) => m.role === "agent") ?? active?.models[0];
 
         if (active && defaultModel) {
           setSelection({
@@ -102,150 +92,464 @@ function HomeContent() {
     );
   }, [setSelection]);
 
-  return (
-    <div className="min-h-screen bg-linear-to-b from-neutral-50 to-neutral-100 dark:from-neutral-950 dark:to-neutral-900 py-16 px-4 sm:px-6 lg:px-8 transition-colors duration-300">
-      <div className="mx-auto flex w-full max-w-5xl flex-col gap-8">
-        <header className="text-center max-w-2xl mx-auto flex flex-col items-center">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-neutral-200 dark:border-neutral-800 bg-white/50 dark:bg-neutral-900/50 backdrop-blur-xs text-xs font-semibold text-neutral-600 dark:text-neutral-300 mb-6 shadow-xs">
-            <Layers className="size-3.5 text-primary" />
-            <span>Aria · Mastra + Next.js</span>
-          </div>
-          <h1 className="text-4xl sm:text-5xl font-extrabold tracking-tight bg-linear-to-r from-neutral-900 via-neutral-700 to-neutral-500 dark:from-neutral-100 dark:via-neutral-300 dark:to-neutral-500 bg-clip-text text-transparent mb-4">
-            Welcome Pradeep
-          </h1>
-          <p className="text-base sm:text-lg text-neutral-500 dark:text-neutral-400 font-medium">
-            Chat with the feedback summarizer agent. Responses stream from
-            Mastra on port 4111.
-          </p>
-        </header>
+  const graphKey = useMemo(
+    () => `${GRAPH_USER_ID}:${graphVersion}`,
+    [graphVersion],
+  );
 
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <p className="text-sm text-neutral-500 dark:text-neutral-400">
-            Choose a model for this session, then send a message below.
-          </p>
-          <ModelPickerTrigger
-            providers={providers}
-            className="w-full sm:w-auto sm:min-w-72"
-          />
+  /* ── Handlers ── */
+
+  const handleNewChat = useCallback(() => {
+    sessionStorage.removeItem("aria-chat-thread-id");
+    window.location.reload();
+  }, []);
+
+  const handleSelectThread = useCallback((threadId: string) => {
+    sessionStorage.setItem("aria-chat-thread-id", threadId);
+    setCurrentThreadId(threadId);
+    window.location.reload();
+  }, []);
+
+  const toggleMobileHistory = useCallback(
+    () => setMobileHistoryOpen((prev) => !prev),
+    [],
+  );
+  const closeMobileHistory = useCallback(
+    () => setMobileHistoryOpen(false),
+    [],
+  );
+
+  const toggleGraphExpanded = useCallback(
+    () => setGraphExpanded((prev) => !prev),
+    [],
+  );
+
+  /* ── Persist history entry on feedback ── */
+
+  const handleFeedbackSubmitted = useCallback(() => {
+    refreshGraph();
+
+    const threadId = sessionStorage.getItem("aria-chat-thread-id");
+    if (!threadId) return;
+
+    void fetch("/api/history", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        threadId,
+        userId: GRAPH_USER_ID,
+        firstMessage: "",
+        topics: [],
+        createdAt: new Date().toISOString(),
+        lastActive: new Date().toISOString(),
+        messageCount: 1,
+        feedbackCount: 1,
+      }),
+    }).catch(() => {});
+  }, [refreshGraph]);
+
+  const handleMessagesPersisted = useCallback(() => {
+    refreshGraph();
+  }, [refreshGraph]);
+
+  return (
+    <main className="relative flex h-screen flex-col overflow-hidden aria-dot-grid"
+      style={{ background: "var(--aria-surface, #FAFAF8)" }}
+    >
+      {/* ── Ambient Background Accents ── */}
+      <div className="pointer-events-none fixed inset-0 -z-10 overflow-hidden">
+        <div className="aria-breathe absolute -top-32 right-20 h-80 w-80 rounded-full opacity-40"
+          style={{ background: "radial-gradient(circle, rgba(13,148,136,0.08), transparent 70%)" }}
+        />
+        <div className="aria-breathe absolute bottom-10 left-10 h-72 w-72 rounded-full opacity-40"
+          style={{
+            background: "radial-gradient(circle, rgba(5,150,105,0.06), transparent 70%)",
+            animationDelay: "3s",
+          }}
+        />
+      </div>
+
+      {/* ── Header ── */}
+      <header
+        className="aria-fade-in-up flex shrink-0 items-center justify-between gap-4 px-4 py-3 lg:px-6"
+        style={{
+          borderBottom: "1px solid var(--aria-border-subtle, #F0EEED)",
+          background: "rgba(255, 255, 255, 0.7)",
+          backdropFilter: "blur(16px) saturate(1.2)",
+        }}
+      >
+        <div className="flex min-w-0 items-center gap-3">
+          {/* Mobile hamburger */}
+          <button
+            type="button"
+            onClick={toggleMobileHistory}
+            aria-label={mobileHistoryOpen ? "Close history" : "Open history"}
+            className="flex size-9 shrink-0 items-center justify-center rounded-xl transition-all hover:scale-105 active:scale-95 lg:hidden"
+            style={{
+              border: "1px solid var(--aria-border, #E8E5E0)",
+              background: "var(--aria-surface-raised, #FFFFFF)",
+              color: "var(--aria-text-secondary, #6B6B6B)",
+            }}
+          >
+            {mobileHistoryOpen ? (
+              <X className="size-4" />
+            ) : (
+              <Menu className="size-4" />
+            )}
+          </button>
+
+          {/* Logo */}
+          <div
+            className="relative grid size-9 shrink-0 place-items-center rounded-xl aria-glow-accent"
+            style={{
+              background: "var(--aria-accent-muted, #F0FDFA)",
+              border: "1px solid var(--aria-accent-soft, #CCFBF1)",
+              color: "var(--aria-accent, #0D9488)",
+            }}
+          >
+            <Sparkles className="size-4" />
+            <span
+              className="absolute -right-0.5 -top-0.5 size-2 rounded-full aria-pulse-ring"
+              style={{
+                background: "var(--aria-emerald, #059669)",
+                boxShadow: "0 0 0 0 rgba(5, 150, 105, 0.5)",
+              }}
+            />
+          </div>
+
+          {/* Title */}
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <span
+                className="rounded-full px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wider"
+                style={{
+                  background: "var(--aria-accent-muted, #F0FDFA)",
+                  color: "var(--aria-accent, #0D9488)",
+                  border: "1px solid var(--aria-accent-soft, #CCFBF1)",
+                }}
+              >
+                ARIA
+              </span>
+              <span
+                className="hidden text-[11px] sm:inline"
+                style={{ color: "var(--aria-text-tertiary, #9C9C9C)" }}
+              >
+                Adaptive · Semantic Memory · Feedback Loop
+              </span>
+            </div>
+            <h1
+              className="mt-0.5 text-[15px] font-semibold tracking-tight lg:text-base"
+              style={{ color: "var(--aria-text-primary, #1A1A1A)" }}
+            >
+              Talk. Watch ARIA think.
+            </h1>
+          </div>
         </div>
 
-        <AgentChat
-          agentId={FEEDBACK_AGENT_ID}
-          title="Customer Feedback Agent"
-          description="Ask questions about customer feedback. Memory is scoped per browser session."
-          placeholder="Ask the feedback summarizer..."
-          examplePrompts={examplePrompts}
-        />
+        {/* Right: model picker */}
+        <div className="flex shrink-0 items-center gap-3">
+          <ModelPickerTrigger providers={providers} className="w-auto min-w-[180px]" />
+        </div>
+      </header>
 
-        <Card className="border border-neutral-200/80 dark:border-neutral-800 bg-white dark:bg-neutral-900/90 shadow-xl rounded-2xl overflow-hidden">
-          <CardHeader className="border-b border-neutral-100 dark:border-neutral-800 pb-6 bg-linear-to-r from-neutral-50/50 to-transparent dark:from-neutral-900/20">
-            <div className="flex items-center gap-3">
-              <div className="p-2.5 rounded-xl bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-950 shadow-md">
-                <GitBranch className="size-5" />
-              </div>
-              <div>
-                <CardTitle className="text-xl font-bold text-neutral-900 dark:text-neutral-100">
-                  Workspace Architecture
-                </CardTitle>
-                <CardDescription className="text-sm mt-1">
-                  Active local packages and apps in the Turborepo monorepo.
-                </CardDescription>
-              </div>
-            </div>
-          </CardHeader>
+      {/* ── Workspace: 20-60-20 ── */}
+      <div className="flex min-h-0 flex-1 overflow-hidden">
 
-          <CardContent className="pt-6">
-            <div className="border border-neutral-200/60 dark:border-neutral-800/80 rounded-xl overflow-hidden bg-neutral-50/30 dark:bg-neutral-950/20">
-              <Table>
-                <TableHeader className="bg-neutral-50 dark:bg-neutral-900/50">
-                  <TableRow>
-                    <TableHead className="font-semibold text-neutral-600 dark:text-neutral-400">
-                      Package Name
-                    </TableHead>
-                    <TableHead className="font-semibold text-neutral-600 dark:text-neutral-400">
-                      Type
-                    </TableHead>
-                    <TableHead className="font-semibold text-neutral-600 dark:text-neutral-400">
-                      Path
-                    </TableHead>
-                    <TableHead className="text-right font-semibold text-neutral-600 dark:text-neutral-400">
-                      Status
-                    </TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {packages.map((pkg) => (
-                    <TableRow
-                      key={pkg.name}
-                      className="hover:bg-neutral-50/80 dark:hover:bg-neutral-900/40 transition-colors"
-                    >
-                      <TableCell className="font-semibold text-neutral-800 dark:text-neutral-200">
-                        {pkg.name}
-                      </TableCell>
-                      <TableCell className="text-neutral-500 dark:text-neutral-400">
-                        {pkg.type}
-                      </TableCell>
-                      <TableCell className="font-mono text-xs text-neutral-500 dark:text-neutral-400">
-                        {pkg.path}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200/60 dark:bg-emerald-950/30 dark:text-emerald-400 dark:border-emerald-900/30">
-                          <span className="size-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                          {pkg.status}
-                        </span>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
+        {/* ── Left: History Sidebar (20%) ── */}
+        <aside
+          className={cn(
+            "hidden shrink-0 flex-col overflow-hidden p-3 pr-0 lg:flex",
+          )}
+          style={{ width: "20%", minWidth: "220px", maxWidth: "300px" }}
+        >
+          <ChatHistory
+            userId={GRAPH_USER_ID}
+            currentThreadId={currentThreadId}
+            onNewChat={handleNewChat}
+            onSelectThread={handleSelectThread}
+            className="aria-fade-in-up aria-stagger-1 h-full"
+          />
+        </aside>
 
-            <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div className="text-xs text-neutral-400 dark:text-neutral-500 flex items-center gap-1.5 font-medium">
-                <CheckCircle2 className="size-3.5 text-emerald-500" />
-                <span>
-                  Run <code>pnpm dev:web+agent</code> before chatting
-                </span>
+        {/* ── Mobile history drawer ── */}
+        {mobileHistoryOpen && (
+          <>
+            <div
+              className="fixed inset-0 z-20 lg:hidden"
+              style={{
+                background: "rgba(250, 250, 248, 0.7)",
+                backdropFilter: "blur(8px)",
+              }}
+              onClick={closeMobileHistory}
+              role="presentation"
+            />
+            <aside className="fixed left-0 top-0 z-30 h-full w-72 p-4 lg:hidden">
+              <div
+                className="flex h-full flex-col overflow-hidden rounded-2xl shadow-xl"
+                style={{
+                  background: "var(--aria-surface-raised, #FFFFFF)",
+                  border: "1px solid var(--aria-border, #E8E5E0)",
+                }}
+              >
+                <div className="flex items-center justify-end p-3">
+                  <button
+                    type="button"
+                    onClick={closeMobileHistory}
+                    className="flex size-8 items-center justify-center rounded-full transition-colors"
+                    style={{ color: "var(--aria-text-tertiary, #9C9C9C)" }}
+                  >
+                    <X className="size-4" />
+                  </button>
+                </div>
+                <div className="min-h-0 flex-1 px-3 pb-3">
+                  <ChatHistory
+                    userId={GRAPH_USER_ID}
+                    currentThreadId={currentThreadId}
+                    onNewChat={() => {
+                      closeMobileHistory();
+                      handleNewChat();
+                    }}
+                    onSelectThread={(threadId) => {
+                      closeMobileHistory();
+                      handleSelectThread(threadId);
+                    }}
+                    className="h-full"
+                  />
+                </div>
               </div>
-              <div className="flex items-center gap-3">
+            </aside>
+          </>
+        )}
+
+        {/* ── Center: Chat (60%) ── */}
+        <div
+          className="aria-fade-in-up aria-stagger-2 flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden p-3"
+        >
+          <div
+            className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl"
+            style={{
+              background: "var(--aria-surface-raised, #FFFFFF)",
+              border: "1px solid var(--aria-border, #E8E5E0)",
+              boxShadow: "var(--aria-shadow-md)",
+            }}
+          >
+            <AgentChat
+              agentId={ARIA_AGENT_ID}
+              userId={GRAPH_USER_ID}
+              title="ARIA"
+              description="Adaptive chat with semantic recall, working memory, and feedback-shaped behavior."
+              placeholder="Ask ARIA anything. Feedback below answers changes future behavior..."
+              examplePrompts={[...EXAMPLE_PROMPTS]}
+              onFeedbackSubmitted={handleFeedbackSubmitted}
+              onMessagesPersisted={handleMessagesPersisted}
+              className="h-full flex-1 rounded-none border-0 bg-transparent shadow-none"
+            />
+          </div>
+        </div>
+
+        {/* ── Right: Knowledge Graph Compact (20%) ── */}
+        <aside
+          className={cn(
+            "hidden shrink-0 flex-col overflow-hidden p-3 pl-0 lg:flex",
+          )}
+          style={{ width: "20%", minWidth: "220px", maxWidth: "320px" }}
+        >
+          <div
+            className="aria-fade-in-up aria-stagger-3 flex h-full flex-col overflow-hidden rounded-2xl"
+            style={{
+              background: "var(--aria-surface-raised, #FFFFFF)",
+              border: "1px solid var(--aria-border, #E8E5E0)",
+              boxShadow: "var(--aria-shadow-sm)",
+            }}
+          >
+            {/* Graph toolbar */}
+            <div
+              className="flex shrink-0 items-center justify-between gap-2 px-3 py-2.5"
+              style={{
+                borderBottom: "1px solid var(--aria-border-subtle, #F0EEED)",
+              }}
+            >
+              <div className="min-w-0">
+                <div className="flex items-center gap-1.5">
+                  <Stars className="size-3.5" style={{ color: "var(--aria-emerald, #059669)" }} />
+                  <p
+                    className="text-[10px] font-semibold uppercase tracking-wider"
+                    style={{ color: "var(--aria-emerald, #059669)" }}
+                  >
+                    Knowledge Graph
+                  </p>
+                </div>
+              </div>
+              <div className="flex shrink-0 items-center gap-1">
                 <Button
+                  type="button"
                   variant="outline"
-                  className="flex items-center justify-center gap-2 border-neutral-200 dark:border-neutral-800 hover:bg-neutral-50 dark:hover:bg-neutral-800"
-                  onClick={() =>
-                    window.open("https://turborepo.dev/docs", "_blank")
-                  }
+                  size="sm"
+                  onClick={toggleGraphExpanded}
+                  className="group h-7 px-2 text-xs transition-all hover:scale-105 active:scale-95"
+                  style={{
+                    borderColor: "var(--aria-border, #E8E5E0)",
+                    background: "var(--aria-surface-inset, #F4F3F0)",
+                    color: "var(--aria-text-secondary, #6B6B6B)",
+                  }}
+                  aria-label="Expand graph"
                 >
-                  <BookOpen className="size-4 text-neutral-500 dark:text-neutral-400" />
-                  <span>Read Docs</span>
+                  <Maximize2 className="size-3 transition-transform group-hover:scale-110" />
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={refreshGraph}
+                  className="group h-7 px-2 text-xs transition-all hover:scale-105 active:scale-95"
+                  style={{
+                    borderColor: "var(--aria-border, #E8E5E0)",
+                    background: "var(--aria-surface-inset, #F4F3F0)",
+                    color: "var(--aria-text-secondary, #6B6B6B)",
+                  }}
+                >
+                  <RefreshCcw className="size-3 transition-transform group-hover:rotate-180" />
                 </Button>
               </div>
             </div>
-          </CardContent>
-        </Card>
 
-        <Alert className="border border-neutral-200/80 dark:border-neutral-800 bg-white dark:bg-neutral-900/90 shadow-lg p-4 rounded-xl flex items-start gap-4">
-          <Terminal className="size-5 text-neutral-500 dark:text-neutral-400 mt-0.5 shrink-0" />
-          <div>
-            <AlertTitle className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">
-              Streaming chat route
-            </AlertTitle>
-            <AlertDescription className="text-xs text-neutral-500 dark:text-neutral-400 mt-1 leading-relaxed">
-              The browser calls <code>/api/chat</code>, which streams via the
-              Mastra Client gateway to <code>{`{MASTRA_API_URL}`}</code> agent{" "}
-              <code>{FEEDBACK_AGENT_ID}</code> with observational memory thread
-              IDs and optional <code>requestContext</code> from the model
-              picker. Provider keys stay in <code>apps/agent/.env.local</code>.
-            </AlertDescription>
+            {/* Graph canvas */}
+            <KnowledgeGraph
+              key={graphKey}
+              userId={GRAPH_USER_ID}
+              className="min-h-0 flex-1 rounded-none bg-transparent"
+              demoMode={demoMode}
+              onDemoModeChange={setDemoMode}
+            />
+
+            {/* Feedback hint */}
+            <div
+              className="px-3 py-2.5"
+              style={{
+                borderTop: "1px solid var(--aria-border-subtle, #F0EEED)",
+              }}
+            >
+              <div
+                className="flex items-center gap-1.5 text-[10px] leading-4"
+                style={{ color: "var(--aria-text-tertiary, #9C9C9C)" }}
+              >
+                <Zap className="size-3 shrink-0" style={{ color: "var(--aria-amber, #D97706)" }} />
+                <span>Rate answers to shape graph nodes.</span>
+              </div>
+            </div>
           </div>
-        </Alert>
-
-        <footer className="text-center text-xs text-neutral-400 dark:text-neutral-600 font-medium pb-8">
-          <p>&copy; 2026 Aria Project. Designed with intentional minimalism.</p>
-        </footer>
+        </aside>
       </div>
-    </div>
+
+      {/* ── Graph Expanded Overlay ── */}
+      {graphExpanded && (
+        <div className="fixed inset-0 z-50 flex flex-col aria-graph-overlay">
+          {/* Backdrop */}
+          <div
+            className="absolute inset-0"
+            style={{ background: "rgba(6, 6, 10, 0.92)", backdropFilter: "blur(20px)" }}
+          />
+
+          {/* Content */}
+          <div className="relative z-10 flex flex-1 flex-col p-4 lg:p-6">
+            {/* Overlay toolbar */}
+            <div
+              className="mb-4 flex items-center justify-between rounded-2xl px-5 py-3"
+              style={{
+                background: "rgba(16, 16, 24, 0.95)",
+                border: "1px dashed #1e1e2a",
+                backdropFilter: "blur(16px)",
+              }}
+            >
+              <div className="flex items-center gap-3">
+                <Stars className="size-4" style={{ color: "#7c3aed" }} />
+                <p
+                  className="text-xs font-semibold uppercase tracking-wider"
+                  style={{ color: "#7c3aed" }}
+                >
+                  Living Knowledge Graph
+                </p>
+                <span className="text-[11px]" style={{ color: "#5a5a70" }}>
+                  Size = frequency · Color = type · Lines = co-occurrence
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={refreshGraph}
+                  className="group h-8 px-3 text-xs transition-all hover:scale-105 active:scale-95"
+                  style={{
+                    borderColor: "#2a2a3a",
+                    background: "#16161f",
+                    color: "#8888a0",
+                  }}
+                >
+                  <RefreshCcw className="mr-1.5 size-3.5 transition-transform group-hover:rotate-180" />
+                  Refresh
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={toggleGraphExpanded}
+                  className="group h-8 px-3 text-xs transition-all hover:scale-105 active:scale-95"
+                  style={{
+                    borderColor: "#2a2a3a",
+                    background: "#16161f",
+                    color: "#8888a0",
+                  }}
+                  aria-label="Collapse graph"
+                >
+                  <Minimize2 className="mr-1.5 size-3.5 transition-transform group-hover:scale-110" />
+                  Collapse
+                </Button>
+              </div>
+            </div>
+
+            {/* Full-size graph */}
+            <div
+              className="flex min-h-0 flex-1 overflow-hidden rounded-2xl"
+              style={{
+                background: "#06060a",
+                border: "1px solid #1e1e2a",
+              }}
+            >
+              <KnowledgeGraph
+                key={`${graphKey}:expanded`}
+                userId={GRAPH_USER_ID}
+                className="min-h-0 flex-1 rounded-none bg-transparent"
+                demoMode={demoMode}
+                onDemoModeChange={setDemoMode}
+              />
+            </div>
+
+            {/* Feedback hint overlay */}
+            <div
+              className="pointer-events-none absolute bottom-8 right-8 max-w-56 rounded-xl px-4 py-3 text-xs leading-5"
+              style={{
+                background: "rgba(16, 16, 24, 0.9)",
+                border: "1px solid rgba(124, 58, 237, 0.2)",
+                color: "#8888a0",
+                backdropFilter: "blur(12px)",
+              }}
+            >
+              <div className="mb-1 flex items-center gap-1.5 font-semibold" style={{ color: "#a855f7" }}>
+                <Zap className="size-3.5" />
+                Feedback loop is live
+              </div>
+              Rate an answer in chat — ARIA shifts graph nodes toward green,
+              yellow, or red.
+            </div>
+          </div>
+        </div>
+      )}
+    </main>
   );
 }
+
+/* ── Page Export ── */
 
 export default function Home() {
   return (

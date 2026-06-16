@@ -70,3 +70,6 @@ docs-architecture/
 # Misc
 .DS_Store
 *.pem
+
+# Chat history file store
+data/

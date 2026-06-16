@@ -27,7 +27,12 @@ const MAX_MESSAGES_PER_REQUEST = 20;
 const MAX_MESSAGE_CHARS = 8_000;
 const MAX_TOTAL_CHARS = 24_000;
 const SAFE_ID_PATTERN = /^[A-Za-z0-9:_-]{1,128}$/;
-const ALLOWED_REQUEST_CONTEXT_KEYS = new Set(["llmModel", "llmProvider"]);
+const ALLOWED_REQUEST_CONTEXT_KEYS = new Set([
+  "llmModel",
+  "llmProvider",
+  "userId",
+  "threadId",
+]);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);

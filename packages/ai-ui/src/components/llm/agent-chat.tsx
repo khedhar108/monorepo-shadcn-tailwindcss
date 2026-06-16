@@ -17,7 +17,7 @@ import {
 } from "@repo/ui/components/card";
 import { cn } from "@repo/ui/lib/utils";
 import { Sparkles } from "lucide-react";
-import { useMemo } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Conversation,
   ConversationContent,
@@ -51,6 +51,7 @@ import {
   type ToolPart,
 } from "../ai-elements/tool";
 import { useChatThread } from "../../hooks/use-chat-thread";
+import { FeedbackBar, type FeedbackPayload } from "../chat/FeedbackBar";
 import { useLlmSelection } from "./llm-selection-context";
 
 export type AgentChatProps = {
@@ -61,7 +62,34 @@ export type AgentChatProps = {
   placeholder?: string;
   examplePrompts?: string[];
   className?: string;
+  userId?: string;
+  onFeedbackSubmitted?: (payload: FeedbackPayload) => void;
+  onMessagesPersisted?: () => void;
 };
+
+type StoredMessageData = {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  createdAt: string;
+};
+
+function storedMessageToUIMessage(msg: StoredMessageData): UIMessage {
+  return {
+    id: msg.id,
+    role: msg.role,
+    parts: [{ type: "text" as const, text: msg.content }],
+    createdAt: msg.createdAt ? new Date(msg.createdAt) : undefined,
+    content: msg.content,
+  } as UIMessage;
+}
+
+function getMessageText(message: UIMessage): string {
+  return message.parts
+    .filter((p) => p.type === "text")
+    .map((p) => (p as { text: string }).text)
+    .join("");
+}
 
 function isToolPart(part: UIMessage["parts"][number]): part is ToolPart {
   return part.type === "dynamic-tool" || part.type.startsWith("tool-");
@@ -156,8 +184,43 @@ function AgentChatInner({
   examplePrompts = [],
   className,
   threadId,
+  userId,
+  onFeedbackSubmitted,
+  onMessagesPersisted,
 }: AgentChatInnerProps) {
   const { selection } = useLlmSelection();
+  const memoryResource = userId ?? agentId;
+
+  const [initialMessages, setInitialMessages] = useState<UIMessage[] | null>(null);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(true);
+  const persistedMessageIdsRef = useRef<Set<string>>(new Set());
+
+  // Fetch past messages for this thread on mount
+  useEffect(() => {
+    let cancelled = false;
+    async function loadHistory() {
+      try {
+        const response = await fetch(
+          `/api/chat/history?threadId=${encodeURIComponent(threadId)}`,
+        );
+        if (response.ok) {
+          const data = (await response.json()) as { messages?: StoredMessageData[] };
+          const msgs = data.messages ?? [];
+          if (!cancelled) {
+            const uiMessages = msgs.map(storedMessageToUIMessage);
+            setInitialMessages(uiMessages);
+            uiMessages.forEach((m) => persistedMessageIdsRef.current.add(m.id));
+          }
+        }
+      } catch {
+        // Graceful fallback — start with empty messages
+      } finally {
+        if (!cancelled) setIsLoadingHistory(false);
+      }
+    }
+    void loadHistory();
+    return () => { cancelled = true; };
+  }, [threadId]);
 
   const transport = useMemo(
     () =>
@@ -171,27 +234,83 @@ function AgentChatInner({
               messages: lastMessage ? [lastMessage] : messages,
               memory: {
                 thread: threadId,
-                resource: agentId,
+                resource: memoryResource,
               },
-              requestContext: selection
-                ? {
-                    llmModel: selection.model,
-                    llmProvider: selection.provider,
-                  }
-                : undefined,
+              requestContext: {
+                ...(selection
+                  ? {
+                      llmModel: selection.model,
+                      llmProvider: selection.provider,
+                    }
+                  : {}),
+                userId: memoryResource,
+                threadId,
+              },
             },
           };
         },
       }),
-    [agentId, apiUrl, threadId, selection],
+    [agentId, apiUrl, memoryResource, threadId, selection],
   );
 
   const { messages, sendMessage, status, error } = useChat({
     transport,
+    ...(initialMessages ? { initialMessages } : {}),
   });
 
   const isBusy = status === "submitted" || status === "streaming";
   const lastMessage = messages.at(-1);
+
+  // Persist new messages to server after each exchange completes
+  const prevBusyRef = useRef(isBusy);
+  useEffect(() => {
+    const wasBusy = prevBusyRef.current;
+    prevBusyRef.current = isBusy;
+
+    // When transitioning from busy to idle, persist any new messages
+    if (wasBusy && !isBusy && threadId) {
+      const newMessages = messages
+        .filter((m) => !persistedMessageIdsRef.current.has(m.id))
+        .map((m) => ({
+          id: m.id,
+          role: m.role as "user" | "assistant",
+          content: getMessageText(m),
+          createdAt: new Date().toISOString(),
+        }));
+
+      if (newMessages.length > 0) {
+        newMessages.forEach((m) => persistedMessageIdsRef.current.add(m.id));
+        void fetch("/api/chat/history", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ threadId, messages: newMessages }),
+        }).catch(() => {});
+        onMessagesPersisted?.();
+      }
+    }
+  }, [isBusy, messages, threadId, onMessagesPersisted]);
+
+  async function submitFeedback(payload: FeedbackPayload) {
+    const response = await fetch("/api/feedback", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        ...payload,
+        userId: memoryResource,
+      }),
+    });
+
+    if (!response.ok) {
+      const body = (await response.json().catch(() => null)) as
+        | { error?: string }
+        | null;
+      throw new Error(body?.error ?? "Failed to save feedback");
+    }
+
+    onFeedbackSubmitted?.(payload);
+  }
 
   return (
     <Card
@@ -215,7 +334,14 @@ function AgentChatInner({
       <CardContent className="flex min-h-0 flex-1 flex-col gap-4 pt-4">
         <Conversation className="min-h-0 flex-1 rounded-xl border border-neutral-200/70 bg-neutral-50/60 dark:border-neutral-800 dark:bg-neutral-950/40">
           <ConversationContent>
-            {messages.length === 0 ? (
+            {isLoadingHistory ? (
+              <div className="flex items-center justify-center py-12">
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                  Loading conversation…
+                </div>
+              </div>
+            ) : messages.length === 0 ? (
               <ConversationEmptyState
                 title="Start a conversation with the agent"
                 description="Send a message or pick a suggestion below."
@@ -252,6 +378,14 @@ function AgentChatInner({
                         isStreamingThisMessage={isStreamingThisMessage}
                         message={message}
                       />
+                      {isAssistant && !isStreamingThisMessage ? (
+                        <FeedbackBar
+                          messageId={message.id}
+                          threadId={threadId}
+                          disabled={isBusy}
+                          onSubmit={submitFeedback}
+                        />
+                      ) : null}
                     </MessageContent>
                   </Message>
                 );
@@ -289,7 +423,8 @@ function AgentChatInner({
 
       <CardFooter className="border-t border-neutral-100 pt-4 text-xs text-neutral-500 dark:border-neutral-800 dark:text-neutral-400">
         Memory thread <code className="mx-1">{threadId.slice(0, 8)}</code> · agent{" "}
-        <code className="mx-1">{agentId}</code>
+        <code className="mx-1">{agentId}</code> · graph{" "}
+        <code className="mx-1">{memoryResource}</code>
       </CardFooter>
     </Card>
   );

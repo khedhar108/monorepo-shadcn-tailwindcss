@@ -9,6 +9,9 @@
     "./components/llm/model-picker-trigger": "./src/components/llm/model-picker-trigger.tsx",
     "./components/llm/*": "./src/components/llm/*.tsx",
     "./components/ai-elements/*": "./src/components/ai-elements/*.tsx",
+    "./components/chat/*": "./src/components/chat/*.tsx",
+    "./components/graph/*": "./src/components/graph/*.tsx",
+    "./components/history/*": "./src/components/history/*.tsx",
     "./hooks/*": "./src/hooks/*.ts",
     "./lib/*": "./src/lib/*.ts"
   },
@@ -19,6 +22,7 @@
     "clean": "rimraf dist .turbo node_modules"
   },
   "peerDependencies": {
+    "next": ">=15.0.0",
     "react": "catalog:",
     "react-dom": "catalog:"
   },
@@ -40,6 +44,7 @@
     "media-chrome": "^4.19.1",
     "motion": "^12.40.0",
     "nanoid": "^5.1.11",
+    "react-force-graph-2d": "^1.29.1",
     "react-jsx-parser": "^2.4.1",
     "shiki": "^4.2.0",
     "streamdown": "^2.5.0",
