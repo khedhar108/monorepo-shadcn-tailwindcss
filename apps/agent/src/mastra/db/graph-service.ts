@@ -1,14 +1,16 @@
 import { getDbClient } from './client';
 import { ensureGraphSchema } from './schema';
 
-export type GraphNodeType = 'topic' | 'entity' | 'concept' | 'preference';
+export type GraphNodeType = 'topic' | 'entity' | 'concept' | 'preference' | 'system';
 export type GraphEdgeType = 'co_occurrence' | 'preference' | 'causal';
+export type GraphKind = 'exploration' | 'preference';
 
 export type GraphNode = {
   id: string;
   userId: string;
   label: string;
   nodeType: GraphNodeType;
+  graphKind: GraphKind;
   frequency: number;
   avgScore: number;
   firstSeen: string;
@@ -46,6 +48,7 @@ export type UpsertTopicInput = {
   userId: string;
   label: string;
   nodeType?: GraphNodeType;
+  graphKind?: GraphKind;
   messageId?: string;
   threadId?: string;
   metadata?: Record<string, unknown>;
@@ -56,6 +59,7 @@ export type GraphQueryFilters = {
   minScore?: number;
   since?: string;
   nodeType?: GraphNodeType;
+  graphKind?: GraphKind | 'all';
   limit?: number;
 };
 
@@ -74,11 +78,14 @@ function buildNodeId(userId: string, label: string): string {
 function mapNodeRow(row: Record<string, unknown>): GraphNode {
   const metadataRaw = row.metadata;
 
+  const rawGraphKind = String(row.graph_kind ?? 'exploration');
+
   return {
     id: String(row.id),
     userId: String(row.user_id),
     label: String(row.label),
     nodeType: String(row.node_type) as GraphNodeType,
+    graphKind: (rawGraphKind === 'preference' ? 'preference' : 'exploration') as GraphKind,
     frequency: Number(row.frequency),
     avgScore: Number(row.avg_score),
     firstSeen: String(row.first_seen),
@@ -117,13 +124,14 @@ export async function upsertNodes(
 
     await db.execute({
       sql: `INSERT INTO graph_nodes (
-        id, user_id, label, node_type, frequency, avg_score, first_seen, last_seen, metadata
-      ) VALUES (?, ?, ?, ?, 1, 0.5, datetime('now'), datetime('now'), ?)
+        id, user_id, label, node_type, graph_kind, frequency, avg_score, first_seen, last_seen, metadata
+      ) VALUES (?, ?, ?, ?, ?, 1, 0.5, datetime('now'), datetime('now'), ?)
       ON CONFLICT(id) DO UPDATE SET
         frequency = frequency + 1,
         last_seen = datetime('now'),
+        graph_kind = COALESCE(excluded.graph_kind, graph_nodes.graph_kind),
         metadata = COALESCE(excluded.metadata, graph_nodes.metadata)`,
-      args: [id, topic.userId, topic.label.trim(), nodeType, metadata],
+      args: [id, topic.userId, topic.label.trim(), nodeType, topic.graphKind ?? 'exploration', metadata],
     });
 
     if (topic.messageId && topic.threadId) {
@@ -213,6 +221,11 @@ export async function getGraph(filters: GraphQueryFilters): Promise<GraphSnapsho
   if (filters.nodeType) {
     conditions.push('node_type = ?');
     args.push(filters.nodeType);
+  }
+
+  if (filters.graphKind && filters.graphKind !== 'all') {
+    conditions.push('graph_kind = ?');
+    args.push(filters.graphKind);
   }
 
   const limit = filters.limit ?? 200;
@@ -308,5 +321,110 @@ export async function updateNodeScores(
             WHERE id = ?`,
       args: [score, nodeId],
     });
+  }
+}
+
+export async function getUserHub(userId: string): Promise<GraphNode> {
+  await ensureGraphSchema();
+
+  const db = getDbClient();
+  const hubId = `${userId}:user-hub`;
+
+  await db.execute({
+    sql: `INSERT OR IGNORE INTO graph_nodes (
+      id, user_id, label, node_type, graph_kind, frequency, avg_score, first_seen, last_seen, metadata
+    ) VALUES (?, ?, 'USER', 'system', 'preference', 0, 1.0, datetime('now'), datetime('now'), NULL)`,
+    args: [hubId, userId],
+  });
+
+  const result = await db.execute({
+    sql: `SELECT * FROM graph_nodes WHERE id = ?`,
+    args: [hubId],
+  });
+
+  const row = result.rows[0];
+  if (!row) {
+    throw new Error(`Failed to create/retrieve USER hub for ${userId}`);
+  }
+
+  return mapNodeRow(row as Record<string, unknown>);
+}
+
+export async function getUserPreferences(
+  userId: string,
+  opts?: { limit?: number },
+): Promise<GraphNode[]> {
+  await ensureGraphSchema();
+
+  const db = getDbClient();
+  const limit = opts?.limit ?? 12;
+
+  const result = await db.execute({
+    sql: `SELECT * FROM graph_nodes
+          WHERE user_id = ? AND graph_kind = 'preference' AND node_type != 'system'
+          ORDER BY avg_score DESC, frequency DESC
+          LIMIT ?`,
+    args: [userId, limit],
+  });
+
+  return result.rows.map((row) => mapNodeRow(row as Record<string, unknown>));
+}
+
+export async function upsertPreferenceNode(input: {
+  userId: string;
+  label: string;
+  score?: number;
+  source?: string;
+}): Promise<GraphNode> {
+  await ensureGraphSchema();
+
+  const db = getDbClient();
+  const hub = await getUserHub(input.userId);
+  const prefId = buildNodeId(input.userId, input.label);
+  const score = input.score ?? 0.5;
+  const metadata = input.source ? JSON.stringify({ source: input.source }) : null;
+
+  await db.execute({
+    sql: `INSERT INTO graph_nodes (
+      id, user_id, label, node_type, graph_kind, frequency, avg_score, first_seen, last_seen, metadata
+    ) VALUES (?, ?, ?, 'preference', 'preference', 1, ?, datetime('now'), datetime('now'), ?)
+    ON CONFLICT(id) DO UPDATE SET
+      frequency = frequency + 1,
+      last_seen = datetime('now'),
+      avg_score = ROUND((avg_score + ?) / 2.0, 4),
+      metadata = COALESCE(excluded.metadata, graph_nodes.metadata)`,
+    args: [prefId, input.userId, input.label.trim(), score, metadata, score],
+  });
+
+  // Ensure edge from USER hub to this preference node
+  const [left, right] = hub.id < prefId ? [hub.id, prefId] : [prefId, hub.id];
+  const edgeId = `${left}:${right}:preference`;
+
+  await db.execute({
+    sql: `INSERT INTO graph_edges (
+      id, user_id, source_id, target_id, edge_type, weight, created_at
+    ) VALUES (?, ?, ?, ?, 'preference', 1.0, datetime('now'))
+    ON CONFLICT(source_id, target_id, edge_type) DO UPDATE SET
+      weight = weight + 1.0`,
+    args: [edgeId, input.userId, hub.id, prefId, 'preference'],
+  });
+
+  const result = await db.execute({
+    sql: `SELECT * FROM graph_nodes WHERE id = ?`,
+    args: [prefId],
+  });
+
+  const row = result.rows[0];
+  if (!row) {
+    throw new Error(`Failed to upsert preference node: ${input.label}`);
+  }
+
+  return mapNodeRow(row as Record<string, unknown>);
+}
+
+export async function ensureUserHubs(userIds?: string[]): Promise<void> {
+  const ids = userIds ?? ['global'];
+  for (const id of ids) {
+    await getUserHub(id);
   }
 }

@@ -46,6 +46,8 @@ const GRAPH_SCHEMA_STATEMENTS = [
   `CREATE INDEX IF NOT EXISTS idx_graph_edges_target ON graph_edges(target_id)`,
   `CREATE INDEX IF NOT EXISTS idx_feedback_user ON feedback(user_id)`,
   `CREATE INDEX IF NOT EXISTS idx_feedback_thread ON feedback(thread_id)`,
+  `ALTER TABLE graph_nodes ADD COLUMN graph_kind TEXT DEFAULT 'exploration'`,
+  `CREATE INDEX IF NOT EXISTS idx_graph_nodes_kind ON graph_nodes(user_id, graph_kind)`,
 ] as const;
 
 let schemaInitialized = false;
@@ -58,7 +60,11 @@ export async function ensureGraphSchema(): Promise<void> {
   const db = getDbClient();
 
   for (const statement of GRAPH_SCHEMA_STATEMENTS) {
-    await db.execute(statement);
+    try {
+      await db.execute(statement);
+    } catch {
+      // Expected: ALTER TABLE ADD COLUMN fails if column already exists
+    }
   }
 
   schemaInitialized = true;

@@ -12,7 +12,14 @@
       "dependsOn": ["^build"],
       "cache": false,
       "persistent": true,
-      "env": ["MASTRA_API_URL"]
+      "env": [
+        "MASTRA_API_URL",
+        "ARIA_JUDGE_MODEL",
+        "ARIA_JUDGE_TIMEOUT_MS",
+        "LLM_MEMORY_MODEL",
+        "LLM_AGENT_MODEL",
+        "LLM_PROVIDER"
+      ]
     },
     "lint": {
       "dependsOn": ["^lint"]

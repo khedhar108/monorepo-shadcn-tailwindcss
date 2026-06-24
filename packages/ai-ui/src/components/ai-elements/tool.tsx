@@ -17,15 +17,18 @@ import {
   XCircleIcon,
 } from "lucide-react";
 import type { ComponentProps, ReactNode } from "react";
-import { isValidElement } from "react";
-
-import { CodeBlock } from "./code-block";
 
 export type ToolProps = ComponentProps<typeof Collapsible>;
 
 export const Tool = ({ className, ...props }: ToolProps) => (
   <Collapsible
-    className={cn("group not-prose mb-4 w-full rounded-md border", className)}
+    className={cn(
+      "group/tool not-prose mb-1.5 w-full min-w-0 max-w-full overflow-hidden rounded-lg border bg-white/60 backdrop-blur-sm",
+      className
+    )}
+    style={{
+      borderColor: "var(--aria-border-subtle, #F0EEED)",
+    }}
     {...props}
   />
 );
@@ -45,31 +48,58 @@ export type ToolHeaderProps = {
 );
 
 const statusLabels: Record<ToolPart["state"], string> = {
-  "approval-requested": "Awaiting Approval",
+  "approval-requested": "Awaiting",
   "approval-responded": "Responded",
   "input-available": "Running",
   "input-streaming": "Pending",
-  "output-available": "Completed",
+  "output-available": "Done",
   "output-denied": "Denied",
   "output-error": "Error",
 };
 
 const statusIcons: Record<ToolPart["state"], ReactNode> = {
-  "approval-requested": <ClockIcon className="size-4 text-yellow-600" />,
-  "approval-responded": <CheckCircleIcon className="size-4 text-blue-600" />,
-  "input-available": <ClockIcon className="size-4 animate-pulse" />,
-  "input-streaming": <CircleIcon className="size-4" />,
-  "output-available": <CheckCircleIcon className="size-4 text-green-600" />,
-  "output-denied": <XCircleIcon className="size-4 text-orange-600" />,
-  "output-error": <XCircleIcon className="size-4 text-red-600" />,
+  "approval-requested": <ClockIcon className="size-3" style={{ color: "var(--aria-amber, #D97706)" }} />,
+  "approval-responded": <CheckCircleIcon className="size-3" style={{ color: "var(--aria-accent, #0D9488)" }} />,
+  "input-available": <ClockIcon className="size-3 animate-pulse" style={{ color: "var(--aria-amber, #D97706)" }} />,
+  "input-streaming": <CircleIcon className="size-3" style={{ color: "var(--aria-text-tertiary, #9C9C9C)" }} />,
+  "output-available": <CheckCircleIcon className="size-3" style={{ color: "var(--aria-emerald, #059669)" }} />,
+  "output-denied": <XCircleIcon className="size-3" style={{ color: "var(--aria-amber, #D97706)" }} />,
+  "output-error": <XCircleIcon className="size-3 text-red-500" />,
+};
+
+const statusDotColor: Record<ToolPart["state"], string> = {
+  "approval-requested": "bg-amber-500",
+  "approval-responded": "bg-teal-500",
+  "input-available": "bg-amber-500",
+  "input-streaming": "animate-pulse bg-neutral-400",
+  "output-available": "bg-emerald-500",
+  "output-denied": "bg-amber-500",
+  "output-error": "bg-red-500",
 };
 
 export const getStatusBadge = (status: ToolPart["state"]) => (
-  <Badge className="gap-1.5 rounded-full text-xs" variant="secondary">
+  <Badge className="gap-1 rounded-full text-xs" variant="secondary">
     {statusIcons[status]}
     {statusLabels[status]}
   </Badge>
 );
+
+const toolLabelMap: Record<string, string> = {
+  topicExtractorTool: "Topic extraction",
+  graphQueryTool: "Knowledge graph",
+  listThreadsTool: "Thread history",
+  getAvailableProvidersTool: "Model providers",
+  feedbackRecorderTool: "Feedback",
+  "topic-extractor": "Topic extraction",
+  "graph-query": "Knowledge graph",
+  "list-threads": "Thread history",
+  "get-available-providers": "Model providers",
+  "feedback-recorder": "Feedback",
+};
+
+function prettifyToolName(name: string): string {
+  return toolLabelMap[name] ?? name;
+}
 
 export const ToolHeader = ({
   className,
@@ -81,21 +111,45 @@ export const ToolHeader = ({
 }: ToolHeaderProps) => {
   const derivedName =
     type === "dynamic-tool" ? toolName : type.split("-").slice(1).join("-");
+  const label = title ?? prettifyToolName(derivedName);
 
   return (
     <CollapsibleTrigger
       className={cn(
-        "flex w-full items-center justify-between gap-4 p-3",
+        "flex w-full min-w-0 items-center justify-between gap-2 px-3 py-2 text-sm transition-colors",
         className
       )}
+      style={{
+        color: "var(--aria-text-primary, #1A1A1A)",
+      }}
+      onMouseEnter={(e) => {
+        e.currentTarget.style.background = "var(--aria-surface-inset, #F4F3F0)";
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.background = "transparent";
+      }}
       {...props}
     >
-      <div className="flex items-center gap-2">
-        <WrenchIcon className="size-4 text-muted-foreground" />
-        <span className="font-medium text-sm">{title ?? derivedName}</span>
-        {getStatusBadge(state)}
+      <div className="flex min-w-0 items-center gap-2">
+        <span
+          className={cn(
+            "size-1.5 shrink-0 rounded-full",
+            statusDotColor[state]
+          )}
+        />
+        <WrenchIcon
+          className="size-3.5 shrink-0"
+          style={{ color: "var(--aria-text-tertiary, #9C9C9C)" }}
+        />
+        <span className="truncate text-[12px] font-medium leading-tight">{label}</span>
       </div>
-      <ChevronDownIcon className="size-4 text-muted-foreground transition-transform group-data-[state=open]:rotate-180" />
+      <div className="flex shrink-0 items-center gap-1.5">
+        {statusIcons[state]}
+        <ChevronDownIcon
+          className="size-3.5 shrink-0 transition-transform duration-200 group-data-[state=open]/tool:rotate-180"
+          style={{ color: "var(--aria-text-tertiary, #9C9C9C)" }}
+        />
+      </div>
     </CollapsibleTrigger>
   );
 };
@@ -105,9 +159,13 @@ export type ToolContentProps = ComponentProps<typeof CollapsibleContent>;
 export const ToolContent = ({ className, ...props }: ToolContentProps) => (
   <CollapsibleContent
     className={cn(
-      "data-[state=closed]:fade-out-0 data-[state=closed]:slide-out-to-top-2 data-[state=open]:slide-in-from-top-2 space-y-4 p-4 text-popover-foreground outline-none data-[state=closed]:animate-out data-[state=open]:animate-in",
+      "data-[state=closed]:fade-out-0 data-[state=closed]:slide-out-to-top-2 data-[state=open]:slide-in-from-top-2 max-h-[280px] space-y-1.5 overflow-y-auto overflow-x-auto px-3 pb-2.5 pt-0 text-xs outline-none data-[state=closed]:animate-out data-[state=open]:animate-in",
+      "[&_pre]:whitespace-pre [&_pre]:break-normal [&_pre]:overflow-x-auto",
       className
     )}
+    style={{
+      color: "var(--aria-text-secondary, #6B6B6B)",
+    }}
     {...props}
   />
 );
@@ -117,18 +175,27 @@ export type ToolInputProps = ComponentProps<"div"> & {
 };
 
 export const ToolInput = ({ className, input, ...props }: ToolInputProps) => {
-  if (input === undefined) {
+  if (input === undefined || input === null) {
     return null;
   }
 
   return (
-    <div className={cn("space-y-2 overflow-hidden", className)} {...props}>
-      <h4 className="font-medium text-muted-foreground text-xs uppercase tracking-wide">
+    <div className={cn("min-w-0 space-y-1 overflow-hidden", className)} {...props}>
+      <h4
+        className="text-[10px] font-semibold uppercase tracking-wider"
+        style={{ color: "var(--aria-text-tertiary, #9C9C9C)" }}
+      >
         Parameters
       </h4>
-      <div className="rounded-md bg-muted/50">
-        <CodeBlock code={JSON.stringify(input, null, 2)} language="json" />
-      </div>
+      <pre
+        className="max-h-32 overflow-y-auto overflow-x-auto rounded-md border p-2 text-[11px] leading-relaxed whitespace-pre"
+        style={{
+          borderColor: "var(--aria-border-subtle, #F0EEED)",
+          background: "var(--aria-surface-inset, #F4F3F0)",
+        }}
+      >
+        {JSON.stringify(input, null, 2)}
+      </pre>
     </div>
   );
 };
@@ -148,32 +215,42 @@ export const ToolOutput = ({
     return null;
   }
 
-  let Output = <div>{output as ReactNode}</div>;
-
-  if (typeof output === "object" && !isValidElement(output)) {
-    Output = (
-      <CodeBlock code={JSON.stringify(output, null, 2)} language="json" />
-    );
-  } else if (typeof output === "string") {
-    Output = <CodeBlock code={output} language="json" />;
-  }
+  const isError = Boolean(errorText);
+  const text =
+    errorText ??
+    (typeof output === "string"
+      ? output
+      : typeof output === "object"
+        ? JSON.stringify(output, null, 2)
+        : String(output ?? ""));
 
   return (
-    <div className={cn("space-y-2", className)} {...props}>
-      <h4 className="font-medium text-muted-foreground text-xs uppercase tracking-wide">
-        {errorText ? "Error" : "Result"}
-      </h4>
-      <div
-        className={cn(
-          "overflow-x-auto rounded-md text-xs [&_table]:w-full",
-          errorText
-            ? "bg-destructive/10 text-destructive"
-            : "bg-muted/50 text-foreground"
-        )}
+    <div className={cn("min-w-0 space-y-1", className)} {...props}>
+      <h4
+        className="text-[10px] font-semibold uppercase tracking-wider"
+        style={{ color: "var(--aria-text-tertiary, #9C9C9C)" }}
       >
-        {errorText && <div>{errorText}</div>}
-        {Output}
-      </div>
+        {isError ? "Error" : "Result"}
+      </h4>
+      <pre
+        className={cn(
+          "max-h-40 overflow-y-auto overflow-x-auto rounded-md border p-2 text-[11px] leading-relaxed whitespace-pre",
+        )}
+        style={{
+          borderColor: isError
+            ? "rgba(239,68,68,0.25)"
+            : "var(--aria-border-subtle, #F0EEED)",
+          background: isError
+            ? "rgba(239,68,68,0.04)"
+            : "var(--aria-surface-inset, #F4F3F0)",
+          color: isError
+            ? "#b91c1c"
+            : "var(--aria-text-secondary, #6B6B6B)",
+        }}
+      >
+        {text}
+      </pre>
     </div>
   );
 };
+

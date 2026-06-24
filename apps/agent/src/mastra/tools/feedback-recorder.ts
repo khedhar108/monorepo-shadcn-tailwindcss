@@ -4,8 +4,10 @@ import {
   getRecentNodeIds,
   recordFeedback,
   updateNodeScores,
+  upsertPreferenceNode,
 } from '../db/graph-service';
 import { computeFeedbackScore } from '../scorers/feedback-scorer';
+import { derivePreferenceLabel } from './derive-preference';
 
 const requestContextValue = (
   context: { requestContext?: { get?: (key: string) => unknown } } | undefined,
@@ -18,7 +20,7 @@ const requestContextValue = (
 export const feedbackRecorderTool = createTool({
   id: 'feedback-recorder',
   description:
-    'Records feedback for an assistant message and updates graph node scores so ARIA adapts future answers.',
+    'Records feedback for an assistant message, updates graph node scores, and derives a preference node so ARIA adapts future answers.',
   inputSchema: z.object({
     userId: z.string().min(1).optional(),
     messageId: z.string().min(1),
@@ -31,16 +33,18 @@ export const feedbackRecorderTool = createTool({
   outputSchema: z.object({
     score: z.number(),
     updatedNodeIds: z.array(z.string()),
+    preferenceLabel: z.string().nullable(),
     message: z.string(),
   }),
   execute: async (input, context) => {
     const userId =
-      input.userId ?? requestContextValue(context, 'userId') ?? 'anonymous-user';
+      input.userId ?? requestContextValue(context, 'userId') ?? 'global';
     const threadId =
       input.threadId ?? requestContextValue(context, 'threadId') ?? 'anonymous-thread';
     const score = computeFeedbackScore(input);
     const feedbackId = `${threadId}:${input.messageId}:${Date.now()}`;
 
+    // 1) Record raw feedback
     await recordFeedback({
       id: feedbackId,
       userId,
@@ -52,6 +56,29 @@ export const feedbackRecorderTool = createTool({
       score,
     });
 
+    // 2) Derive a preference label and upsert a preference node
+    let preferenceLabel: string | null = null;
+    try {
+      const derived = derivePreferenceLabel({
+        thumbs: input.thumbs,
+        rating: input.rating,
+        comment: input.comment,
+      });
+
+      if (derived) {
+        preferenceLabel = derived.label;
+        await upsertPreferenceNode({
+          userId,
+          label: derived.label,
+          score,
+          source: 'feedback',
+        });
+      }
+    } catch (error) {
+      console.error('[feedback-recorder] preference derivation failed:', error);
+    }
+
+    // 3) Keep existing behavior: nudge recent exploration node scores
     const updatedNodeIds =
       input.nodeIds && input.nodeIds.length > 0
         ? input.nodeIds
@@ -62,10 +89,13 @@ export const feedbackRecorderTool = createTool({
     return {
       score,
       updatedNodeIds,
+      preferenceLabel,
       message:
-        updatedNodeIds.length > 0
-          ? 'Feedback recorded and graph scores updated.'
-          : 'Feedback recorded. No graph nodes were available to update yet.',
+        preferenceLabel
+          ? `Feedback recorded. Saved preference: ${preferenceLabel}.`
+          : updatedNodeIds.length > 0
+            ? 'Feedback recorded and graph scores updated.'
+            : 'Feedback recorded. No graph nodes were available to update yet.',
     };
   },
 });

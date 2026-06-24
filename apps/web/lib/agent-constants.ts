@@ -9,3 +9,6 @@ export type AgentId = (typeof AGENT_IDS)[keyof typeof AGENT_IDS];
 export const FEEDBACK_AGENT_ID = AGENT_IDS.feedbackSummarizer;
 
 export const ARIA_AGENT_ID = AGENT_IDS.ariaAgent;
+
+/** Global graph user — the knowledge graph is shared across all users and threads. */
+export const GLOBAL_GRAPH_USER = "global";

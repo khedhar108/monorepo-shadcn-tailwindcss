@@ -21,8 +21,8 @@ export type PhysicsConfig = {
 };
 
 export const DEFAULT_PHYSICS: PhysicsConfig = {
-  linkDistance: 120,
-  repulsion: 180,
+  linkDistance: 160,
+  repulsion: 280,
   nodeSize: 1.0,
 };
 
@@ -33,8 +33,6 @@ export type GraphControlsProps = {
   onMinScoreChange: (score: number) => void;
   minFrequency: number;
   onMinFrequencyChange: (frequency: number) => void;
-  layout: GraphLayout;
-  onLayoutChange: (layout: GraphLayout) => void;
   onZoomIn: () => void;
   onZoomOut: () => void;
   onFitAll: () => void;
@@ -48,18 +46,17 @@ export type GraphControlsProps = {
   onDemoModeChange?: (enabled: boolean) => void;
 };
 
-/* ── Dark theme tokens ────────────────────────────── */
+/* ── Light theme tokens ───────────────────────────── */
 
-const SURFACE = "#101018";
-const ELEVATED = "#16161f";
-const HOVER = "#1c1c28";
-const BORDER_SUBTLE = "#1e1e2a";
-const BORDER = "#2a2a3a";
-const TEXT_PRIMARY = "#e4e4ed";
-const TEXT_SECONDARY = "#8888a0";
-const TEXT_MUTED = "#5a5a70";
-const ACCENT = "#7c3aed";
-const ACCENT_DIM = "#5b21b6";
+const SURFACE = "var(--aria-surface-raised, #FFFFFF)";
+const ELEVATED = "var(--aria-surface-inset, #F4F3F0)";
+const BORDER_SUBTLE = "var(--aria-border-subtle, #F0EEED)";
+const BORDER = "var(--aria-border, #E8E5E0)";
+const TEXT_PRIMARY = "var(--aria-text-primary, #1A1A1A)";
+const TEXT_SECONDARY = "var(--aria-text-secondary, #6B6B6B)";
+const TEXT_MUTED = "var(--aria-text-tertiary, #9C9C9C)";
+const ACCENT = "#0D9488";
+const ACCENT_DIM = "#0F766E";
 
 function SliderRow({
   label,
@@ -113,8 +110,6 @@ export function GraphControls({
   onMinScoreChange,
   minFrequency,
   onMinFrequencyChange,
-  layout,
-  onLayoutChange,
   onZoomIn,
   onZoomOut,
   onFitAll,
@@ -140,81 +135,152 @@ export function GraphControls({
 
   const baseBtnStyle = {
     background: SURFACE,
-    borderColor: BORDER_SUBTLE,
+    borderColor: BORDER,
     color: TEXT_SECONDARY,
-    backdropFilter: "blur(16px)",
+    backdropFilter: "blur(12px)",
+  } as React.CSSProperties;
+
+  const baseBtnHoverStyle = {
+    background: ELEVATED,
+    borderColor: BORDER,
+    color: TEXT_PRIMARY,
   } as React.CSSProperties;
 
   const baseInputStyle = {
     background: SURFACE,
-    borderColor: BORDER_SUBTLE,
+    borderColor: BORDER,
+    backdropFilter: "blur(12px)",
   };
 
   return (
-    <div className="absolute left-4 top-4 z-10 flex flex-col gap-2">
-      {/* Search bar + toggle + demo */}
-      <div className="flex items-center gap-2">
+    <div className="absolute left-2 top-14 z-10 flex max-w-[calc(100%-1rem)] flex-col gap-1.5">
+      {/* ponytail: single toolbar row — search (flex-1) + settings + demo + loader + divider + zoom */}
+      <div className="flex items-center gap-1">
         <div
-          className="flex items-center gap-2 rounded-lg border px-3 py-2 shadow-lg"
+          className="flex h-7 min-w-0 flex-1 items-center gap-1.5 rounded-md border px-2 shadow-sm transition-shadow hover:shadow-md"
           style={{ ...baseInputStyle, color: TEXT_PRIMARY }}
         >
-          <Search className="h-4 w-4" style={{ color: TEXT_MUTED }} />
+          <Search className="h-3 w-3 shrink-0" style={{ color: TEXT_MUTED }} />
           <input
             type="text"
             value={searchQuery}
             onChange={(e) => onSearchChange(e.target.value)}
-            placeholder="Find topic..."
-            className="w-28 bg-transparent text-sm outline-none sm:w-40"
+            placeholder="Find..."
+            className="min-w-0 flex-1 bg-transparent text-[12px] outline-none"
             style={{ color: TEXT_PRIMARY }}
           />
         </div>
 
         <button
           onClick={() => setShowFilters(!showFilters)}
-          className="flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-medium shadow-lg transition-colors"
+          className="group flex h-7 shrink-0 items-center gap-1 rounded-md border px-2 text-[12px] font-medium shadow-sm transition-all hover:shadow-md active:scale-95 whitespace-nowrap"
           style={
             showFilters
-              ? { background: `${ACCENT}20`, borderColor: ACCENT, color: ACCENT, backdropFilter: "blur(16px)" }
+              ? { background: `${ACCENT}14`, borderColor: ACCENT, color: ACCENT, backdropFilter: "blur(12px)" }
               : { ...baseBtnStyle }
           }
+          onMouseEnter={(e) => {
+            if (!showFilters) {
+              Object.assign(e.currentTarget.style, baseBtnHoverStyle);
+            }
+          }}
+          onMouseLeave={(e) => {
+            if (!showFilters) {
+              Object.assign(e.currentTarget.style, baseBtnStyle);
+            }
+          }}
+          aria-label="Settings"
         >
-          <Filter className="h-4 w-4" />
-          <span className="hidden sm:inline">Settings</span>
+          <Filter className="h-3 w-3 shrink-0" />
+          <span className="hidden md:inline">Settings</span>
         </button>
 
         {onDemoModeChange && (
           <button
             onClick={() => onDemoModeChange(!demoMode)}
-            className="flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-medium shadow-lg transition-all"
+            className="group flex h-7 shrink-0 items-center gap-1 rounded-md border px-2 text-[12px] font-medium shadow-sm transition-all hover:shadow-md active:scale-95 whitespace-nowrap"
             style={
               demoMode
-                ? { background: `${ACCENT}20`, borderColor: ACCENT, color: ACCENT }
+                ? { background: `${ACCENT}14`, borderColor: ACCENT, color: ACCENT }
                 : { ...baseBtnStyle }
             }
+            onMouseEnter={(e) => {
+              if (!demoMode) {
+                Object.assign(e.currentTarget.style, baseBtnHoverStyle);
+              }
+            }}
+            onMouseLeave={(e) => {
+              if (!demoMode) {
+                Object.assign(e.currentTarget.style, baseBtnStyle);
+              }
+            }}
             title="Toggle demo graph (50+ nodes)"
           >
-            <FlaskConical className="h-4 w-4" />
+            <FlaskConical className="h-3 w-3 shrink-0" />
+            <span className="hidden md:inline">Demo</span>
           </button>
         )}
 
         {isLoading && (
           <div
-            className="flex items-center gap-2 rounded-lg border px-3 py-2 text-xs shadow-lg"
+            className="flex h-7 shrink-0 items-center gap-2 rounded-md border px-2 shadow-sm"
             style={{ ...baseInputStyle, color: TEXT_MUTED }}
           >
             <div
-              className="h-3 w-3 animate-spin rounded-full border-2 border-t-transparent"
+              className="h-2.5 w-2.5 animate-spin rounded-full border-2 border-t-transparent"
               style={{ borderColor: ACCENT, borderTopColor: "transparent" }}
             />
           </div>
         )}
+
+        {/* Divider before zoom controls */}
+        <div
+          className="mx-0.5 h-4 w-px shrink-0"
+          style={{ background: BORDER }}
+        />
+
+        <button
+          onClick={onZoomOut}
+          className="group flex h-7 w-7 shrink-0 items-center justify-center rounded-md border shadow-sm transition-all hover:shadow-md hover:scale-105 active:scale-95"
+          style={baseBtnStyle}
+          onMouseEnter={(e) => Object.assign(e.currentTarget.style, baseBtnHoverStyle)}
+          onMouseLeave={(e) => Object.assign(e.currentTarget.style, baseBtnStyle)}
+          aria-label="Zoom out"
+        >
+          <Minus className="h-3 w-3" />
+        </button>
+        <button
+          onClick={onFitAll}
+          className="group flex h-7 shrink-0 items-center gap-1 rounded-md border px-2 text-[11px] font-medium shadow-sm transition-all hover:shadow-md hover:scale-105 active:scale-95"
+          style={baseBtnStyle}
+          onMouseEnter={(e) => Object.assign(e.currentTarget.style, baseBtnHoverStyle)}
+          onMouseLeave={(e) => Object.assign(e.currentTarget.style, baseBtnStyle)}
+        >
+          <Maximize className="h-2.5 w-2.5" />
+          Fit
+        </button>
+        <button
+          onClick={onZoomIn}
+          className="group flex h-7 w-7 shrink-0 items-center justify-center rounded-md border shadow-sm transition-all hover:shadow-md hover:scale-105 active:scale-95"
+          style={baseBtnStyle}
+          onMouseEnter={(e) => Object.assign(e.currentTarget.style, baseBtnHoverStyle)}
+          onMouseLeave={(e) => Object.assign(e.currentTarget.style, baseBtnStyle)}
+          aria-label="Zoom in"
+        >
+          <Plus className="h-3 w-3" />
+        </button>
       </div>
 
       {/* Settings panel */}
       {showFilters && (
         <div
-          className="w-64 rounded-lg border shadow-lg"
-          style={{ background: SURFACE, borderColor: BORDER_SUBTLE, backdropFilter: "blur(20px)" }}
+          className="w-56 max-w-[calc(100vw-2rem)] rounded-md border shadow-sm"
+          style={{
+            background: SURFACE,
+            borderColor: BORDER,
+            backdropFilter: "blur(20px)",
+            boxShadow: "0 4px 16px rgba(0,0,0,0.06)",
+          }}
         >
           {/* Tab bar */}
           <div
@@ -255,7 +321,7 @@ export function GraphControls({
 
           {/* Filter tab */}
           {activeTab === "filter" && (
-            <div className="space-y-4 p-3">
+            <div className="space-y-3 p-2.5">
               <SliderRow
                 label="Minimum score"
                 value={minScore}
@@ -290,7 +356,7 @@ export function GraphControls({
                     className="w-full rounded-md border px-2 py-1.5 text-xs outline-none"
                     style={{
                       background: ELEVATED,
-                      borderColor: BORDER_SUBTLE,
+                      borderColor: BORDER,
                       color: TEXT_PRIMARY,
                     }}
                   >
@@ -304,36 +370,12 @@ export function GraphControls({
                 </div>
               )}
 
-              <div>
-                <label
-                  className="mb-1.5 block text-[11px] font-medium"
-                  style={{ color: TEXT_SECONDARY }}
-                >
-                  Layout
-                </label>
-                <div className="flex gap-1">
-                  {(["force", "radial", "tree"] as GraphLayout[]).map((l) => (
-                    <button
-                      key={l}
-                      onClick={() => onLayoutChange(l)}
-                      className="flex-1 rounded-md px-2 py-1.5 text-xs capitalize transition-colors"
-                      style={
-                        layout === l
-                          ? { background: ACCENT, color: "#fff" }
-                          : { background: ELEVATED, color: TEXT_SECONDARY }
-                      }
-                    >
-                      {l}
-                    </button>
-                  ))}
-                </div>
-              </div>
             </div>
           )}
 
           {/* Physics tab */}
           {activeTab === "physics" && (
-            <div className="space-y-4 p-3">
+            <div className="space-y-3 p-2.5">
               <p className="text-[10px] leading-relaxed" style={{ color: TEXT_MUTED }}>
                 Tune the force-simulation to prevent node overlap and control spacing.
               </p>
@@ -373,7 +415,7 @@ export function GraphControls({
                   onClick={() => onPhysicsChange(DEFAULT_PHYSICS)}
                   className="flex w-full items-center justify-center gap-1.5 rounded-md border px-3 py-1.5 text-xs transition-colors"
                   style={{
-                    borderColor: BORDER_SUBTLE,
+                    borderColor: BORDER,
                     color: TEXT_MUTED,
                     background: ELEVATED,
                   }}
@@ -395,34 +437,6 @@ export function GraphControls({
           )}
         </div>
       )}
-
-      {/* Zoom controls */}
-      <div className="flex items-center gap-1">
-        <button
-          onClick={onZoomOut}
-          className="rounded-lg border p-2 shadow-lg transition-colors hover:scale-105 active:scale-95"
-          style={baseBtnStyle}
-          aria-label="Zoom out"
-        >
-          <Minus className="h-4 w-4" />
-        </button>
-        <button
-          onClick={onFitAll}
-          className="rounded-lg border px-3 py-2 text-xs font-medium shadow-lg transition-colors hover:scale-105 active:scale-95"
-          style={baseBtnStyle}
-        >
-          <Maximize className="mr-1 inline h-3 w-3" />
-          Fit
-        </button>
-        <button
-          onClick={onZoomIn}
-          className="rounded-lg border p-2 shadow-lg transition-colors hover:scale-105 active:scale-95"
-          style={baseBtnStyle}
-          aria-label="Zoom in"
-        >
-          <Plus className="h-4 w-4" />
-        </button>
-      </div>
     </div>
   );
 }

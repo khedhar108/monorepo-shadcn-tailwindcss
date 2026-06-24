@@ -23,11 +23,18 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { getAvailableProviders } from "./llm/actions";
-import { ARIA_AGENT_ID } from "../lib/agent-constants";
+import { ARIA_AGENT_ID, GLOBAL_GRAPH_USER } from "../lib/agent-constants";
 
 /* ── Constants ── */
 
-const GRAPH_USER_ID = "aria-local-user";
+const GRAPH_USER_ID = GLOBAL_GRAPH_USER;
+
+function createThreadId(): string {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+    return crypto.randomUUID();
+  }
+  return `thread-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+}
 
 const EXAMPLE_PROMPTS = [
   "Help me plan the ARIA knowledge graph experience",
@@ -54,9 +61,16 @@ function HomeContent() {
   const [graphExpanded, setGraphExpanded] = useState(false);
   const [demoMode, setDemoMode] = useState(false);
 
-  /* Read cached thread on mount */
+  /* Initialize thread id (restore or create new) on mount */
   useEffect(() => {
-    setCurrentThreadId(sessionStorage.getItem("aria-chat-thread-id"));
+    const existing = sessionStorage.getItem("aria-chat-thread-id");
+    if (existing) {
+      setCurrentThreadId(existing);
+    } else {
+      const next = createThreadId();
+      sessionStorage.setItem("aria-chat-thread-id", next);
+      setCurrentThreadId(next);
+    }
   }, []);
 
   /* Load providers once */
@@ -100,24 +114,21 @@ function HomeContent() {
   /* ── Handlers ── */
 
   const handleNewChat = useCallback(() => {
-    sessionStorage.removeItem("aria-chat-thread-id");
-    window.location.reload();
+    const next = createThreadId();
+    sessionStorage.setItem("aria-chat-thread-id", next);
+    setCurrentThreadId(next);
   }, []);
 
   const handleSelectThread = useCallback((threadId: string) => {
     sessionStorage.setItem("aria-chat-thread-id", threadId);
     setCurrentThreadId(threadId);
-    window.location.reload();
   }, []);
 
   const toggleMobileHistory = useCallback(
     () => setMobileHistoryOpen((prev) => !prev),
     [],
   );
-  const closeMobileHistory = useCallback(
-    () => setMobileHistoryOpen(false),
-    [],
-  );
+  const closeMobileHistory = useCallback(() => setMobileHistoryOpen(false), []);
 
   const toggleGraphExpanded = useCallback(
     () => setGraphExpanded((prev) => !prev),
@@ -128,24 +139,6 @@ function HomeContent() {
 
   const handleFeedbackSubmitted = useCallback(() => {
     refreshGraph();
-
-    const threadId = sessionStorage.getItem("aria-chat-thread-id");
-    if (!threadId) return;
-
-    void fetch("/api/history", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        threadId,
-        userId: GRAPH_USER_ID,
-        firstMessage: "",
-        topics: [],
-        createdAt: new Date().toISOString(),
-        lastActive: new Date().toISOString(),
-        messageCount: 1,
-        feedbackCount: 1,
-      }),
-    }).catch(() => {});
   }, [refreshGraph]);
 
   const handleMessagesPersisted = useCallback(() => {
@@ -153,17 +146,24 @@ function HomeContent() {
   }, [refreshGraph]);
 
   return (
-    <main className="relative flex h-screen flex-col overflow-hidden aria-dot-grid"
+    <main
+      className="relative flex h-screen flex-col overflow-hidden aria-dot-grid"
       style={{ background: "var(--aria-surface, #FAFAF8)" }}
     >
       {/* ── Ambient Background Accents ── */}
       <div className="pointer-events-none fixed inset-0 -z-10 overflow-hidden">
-        <div className="aria-breathe absolute -top-32 right-20 h-80 w-80 rounded-full opacity-40"
-          style={{ background: "radial-gradient(circle, rgba(13,148,136,0.08), transparent 70%)" }}
-        />
-        <div className="aria-breathe absolute bottom-10 left-10 h-72 w-72 rounded-full opacity-40"
+        <div
+          className="aria-breathe absolute -top-32 right-20 h-80 w-80 rounded-full opacity-40"
           style={{
-            background: "radial-gradient(circle, rgba(5,150,105,0.06), transparent 70%)",
+            background:
+              "radial-gradient(circle, rgba(13,148,136,0.08), transparent 70%)",
+          }}
+        />
+        <div
+          className="aria-breathe absolute bottom-10 left-10 h-72 w-72 rounded-full opacity-40"
+          style={{
+            background:
+              "radial-gradient(circle, rgba(5,150,105,0.06), transparent 70%)",
             animationDelay: "3s",
           }}
         />
@@ -248,13 +248,15 @@ function HomeContent() {
 
         {/* Right: model picker */}
         <div className="flex shrink-0 items-center gap-3">
-          <ModelPickerTrigger providers={providers} className="w-auto min-w-[180px]" />
+          <ModelPickerTrigger
+            providers={providers}
+            className="w-auto min-w-45"
+          />
         </div>
       </header>
 
       {/* ── Workspace: 20-60-20 ── */}
       <div className="flex min-h-0 flex-1 overflow-hidden">
-
         {/* ── Left: History Sidebar (20%) ── */}
         <aside
           className={cn(
@@ -322,9 +324,7 @@ function HomeContent() {
         )}
 
         {/* ── Center: Chat (60%) ── */}
-        <div
-          className="aria-fade-in-up aria-stagger-2 flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden p-3"
-        >
+        <div className="aria-fade-in-up aria-stagger-2 flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden p-3">
           <div
             className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl"
             style={{
@@ -334,8 +334,10 @@ function HomeContent() {
             }}
           >
             <AgentChat
+              key={currentThreadId ?? "no-thread"}
               agentId={ARIA_AGENT_ID}
               userId={GRAPH_USER_ID}
+              threadId={currentThreadId}
               title="ARIA"
               description="Adaptive chat with semantic recall, working memory, and feedback-shaped behavior."
               placeholder="Ask ARIA anything. Feedback below answers changes future behavior..."
@@ -371,7 +373,10 @@ function HomeContent() {
             >
               <div className="min-w-0">
                 <div className="flex items-center gap-1.5">
-                  <Stars className="size-3.5" style={{ color: "var(--aria-emerald, #059669)" }} />
+                  <Stars
+                    className="size-3.5"
+                    style={{ color: "var(--aria-emerald, #059669)" }}
+                  />
                   <p
                     className="text-[10px] font-semibold uppercase tracking-wider"
                     style={{ color: "var(--aria-emerald, #059669)" }}
@@ -417,7 +422,7 @@ function HomeContent() {
             <KnowledgeGraph
               key={graphKey}
               userId={GRAPH_USER_ID}
-              className="min-h-0 flex-1 rounded-none bg-transparent"
+              className="min-h-0 flex-1 rounded-none"
               demoMode={demoMode}
               onDemoModeChange={setDemoMode}
             />
@@ -433,7 +438,10 @@ function HomeContent() {
                 className="flex items-center gap-1.5 text-[10px] leading-4"
                 style={{ color: "var(--aria-text-tertiary, #9C9C9C)" }}
               >
-                <Zap className="size-3 shrink-0" style={{ color: "var(--aria-amber, #D97706)" }} />
+                <Zap
+                  className="size-3 shrink-0"
+                  style={{ color: "var(--aria-amber, #D97706)" }}
+                />
                 <span>Rate answers to shape graph nodes.</span>
               </div>
             </div>
@@ -447,7 +455,10 @@ function HomeContent() {
           {/* Backdrop */}
           <div
             className="absolute inset-0"
-            style={{ background: "rgba(6, 6, 10, 0.92)", backdropFilter: "blur(20px)" }}
+            style={{
+              background: "rgba(250, 250, 248, 0.95)",
+              backdropFilter: "blur(20px)",
+            }}
           />
 
           {/* Content */}
@@ -456,20 +467,27 @@ function HomeContent() {
             <div
               className="mb-4 flex items-center justify-between rounded-2xl px-5 py-3"
               style={{
-                background: "rgba(16, 16, 24, 0.95)",
-                border: "1px dashed #1e1e2a",
+                background: "rgba(255, 255, 255, 0.95)",
+                border: "1px solid var(--aria-border, #E8E5E0)",
                 backdropFilter: "blur(16px)",
+                boxShadow: "0 2px 12px rgba(0, 0, 0, 0.06)",
               }}
             >
               <div className="flex items-center gap-3">
-                <Stars className="size-4" style={{ color: "#7c3aed" }} />
+                <Stars
+                  className="size-4"
+                  style={{ color: "var(--aria-emerald, #059669)" }}
+                />
                 <p
                   className="text-xs font-semibold uppercase tracking-wider"
-                  style={{ color: "#7c3aed" }}
+                  style={{ color: "var(--aria-emerald, #059669)" }}
                 >
                   Living Knowledge Graph
                 </p>
-                <span className="text-[11px]" style={{ color: "#5a5a70" }}>
+                <span
+                  className="text-[11px]"
+                  style={{ color: "var(--aria-text-tertiary, #9C9C9C)" }}
+                >
                   Size = frequency · Color = type · Lines = co-occurrence
                 </span>
               </div>
@@ -481,9 +499,9 @@ function HomeContent() {
                   onClick={refreshGraph}
                   className="group h-8 px-3 text-xs transition-all hover:scale-105 active:scale-95"
                   style={{
-                    borderColor: "#2a2a3a",
-                    background: "#16161f",
-                    color: "#8888a0",
+                    borderColor: "var(--aria-border, #E8E5E0)",
+                    background: "var(--aria-surface-inset, #F4F3F0)",
+                    color: "var(--aria-text-secondary, #6B6B6B)",
                   }}
                 >
                   <RefreshCcw className="mr-1.5 size-3.5 transition-transform group-hover:rotate-180" />
@@ -496,9 +514,9 @@ function HomeContent() {
                   onClick={toggleGraphExpanded}
                   className="group h-8 px-3 text-xs transition-all hover:scale-105 active:scale-95"
                   style={{
-                    borderColor: "#2a2a3a",
-                    background: "#16161f",
-                    color: "#8888a0",
+                    borderColor: "var(--aria-border, #E8E5E0)",
+                    background: "var(--aria-surface-inset, #F4F3F0)",
+                    color: "var(--aria-text-secondary, #6B6B6B)",
                   }}
                   aria-label="Collapse graph"
                 >
@@ -510,16 +528,17 @@ function HomeContent() {
 
             {/* Full-size graph */}
             <div
-              className="flex min-h-0 flex-1 overflow-hidden rounded-2xl"
+              className="relative min-h-0 flex-1 overflow-hidden rounded-2xl"
               style={{
-                background: "#06060a",
-                border: "1px solid #1e1e2a",
+                background: "#FFFFFF",
+                border: "1px solid var(--aria-border, #E8E5E0)",
+                boxShadow: "0 4px 24px rgba(0, 0, 0, 0.06)",
               }}
             >
               <KnowledgeGraph
                 key={`${graphKey}:expanded`}
                 userId={GRAPH_USER_ID}
-                className="min-h-0 flex-1 rounded-none bg-transparent"
+                className="absolute inset-0 rounded-none"
                 demoMode={demoMode}
                 onDemoModeChange={setDemoMode}
               />
@@ -529,13 +548,17 @@ function HomeContent() {
             <div
               className="pointer-events-none absolute bottom-8 right-8 max-w-56 rounded-xl px-4 py-3 text-xs leading-5"
               style={{
-                background: "rgba(16, 16, 24, 0.9)",
-                border: "1px solid rgba(124, 58, 237, 0.2)",
-                color: "#8888a0",
+                background: "rgba(255, 255, 255, 0.92)",
+                border: "1px solid var(--aria-border, #E8E5E0)",
+                color: "var(--aria-text-secondary, #6B6B6B)",
                 backdropFilter: "blur(12px)",
+                boxShadow: "0 2px 8px rgba(0, 0, 0, 0.05)",
               }}
             >
-              <div className="mb-1 flex items-center gap-1.5 font-semibold" style={{ color: "#a855f7" }}>
+              <div
+                className="mb-1 flex items-center gap-1.5 font-semibold"
+                style={{ color: "var(--aria-emerald, #059669)" }}
+              >
                 <Zap className="size-3.5" />
                 Feedback loop is live
               </div>

@@ -2,6 +2,7 @@
 
 import { Check, MessageSquare, Star, ThumbsDown, ThumbsUp } from "lucide-react";
 import { useMemo, useState } from "react";
+import { toast } from "sonner";
 import { cn } from "@repo/ui/lib/utils";
 
 export type FeedbackPayload = {
@@ -12,11 +13,17 @@ export type FeedbackPayload = {
   comment?: string;
 };
 
+export type FeedbackResult = {
+  preferenceLabel?: string | null;
+  graphUpdated?: boolean;
+  nodesUpdated?: number;
+};
+
 export type FeedbackBarProps = {
   messageId: string;
   threadId: string;
   disabled?: boolean;
-  onSubmit: (payload: FeedbackPayload) => Promise<void> | void;
+  onSubmit: (payload: FeedbackPayload) => Promise<FeedbackResult | void>;
 };
 
 export function FeedbackBar({
@@ -31,6 +38,7 @@ export function FeedbackBar({
   const [expanded, setExpanded] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  const [preferenceLabel, setPreferenceLabel] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const canSubmit = useMemo(
@@ -47,17 +55,32 @@ export function FeedbackBar({
     setError(null);
 
     try {
-      await onSubmit({
+      const result = await onSubmit({
         messageId,
         threadId,
         thumbs,
         rating,
         comment: comment.trim() || undefined,
       });
+      setPreferenceLabel(result?.preferenceLabel ?? null);
       setSubmitted(true);
       setExpanded(false);
+
+      // Toast: graph modified alert
+      if (result?.graphUpdated) {
+        const nodesCount = result.nodesUpdated ?? 0;
+        const prefPart = result.preferenceLabel
+          ? ` · preference "${result.preferenceLabel}" added`
+          : "";
+        toast.success("Graph modified", {
+          description: `${nodesCount} node(s) rescored${prefPart}`,
+        });
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Feedback failed");
+      toast.error("Feedback failed", {
+        description: err instanceof Error ? err.message : undefined,
+      });
     } finally {
       setIsSubmitting(false);
     }
@@ -65,9 +88,11 @@ export function FeedbackBar({
 
   if (submitted) {
     return (
-      <div className="mt-2 inline-flex items-center gap-1.5 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-3 py-1 text-xs font-medium text-emerald-700 dark:text-emerald-300">
+      <div className="mt-2 inline-flex flex-wrap items-center gap-1.5 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-3 py-1 text-xs font-medium text-emerald-700 dark:text-emerald-300">
         <Check className="size-3.5" />
-        Feedback saved. ARIA will adapt.
+        {preferenceLabel
+          ? `Saved preference: ${preferenceLabel}`
+          : "Feedback saved. ARIA will adapt."}
       </div>
     );
   }
@@ -148,12 +173,22 @@ export function FeedbackBar({
       </div>
 
       {expanded ? (
-        <textarea
-          value={comment}
-          onChange={(event) => setComment(event.target.value)}
-          placeholder="Tell ARIA what to change next time..."
-          className="mt-2 min-h-20 w-full resize-none rounded-xl border border-neutral-200 bg-white/80 px-3 py-2 text-sm outline-none transition placeholder:text-neutral-400 focus:border-neutral-400 dark:border-neutral-800 dark:bg-neutral-950/80 dark:focus:border-neutral-600"
-        />
+        <div className="mt-2 flex items-end gap-2">
+          <textarea
+            value={comment}
+            onChange={(event) => setComment(event.target.value)}
+            placeholder="Tell ARIA what to change next time..."
+            className="min-h-20 flex-1 resize-none rounded-xl border border-neutral-200 bg-white/80 px-3 py-2 text-sm outline-none transition placeholder:text-neutral-400 focus:border-neutral-400 dark:border-neutral-800 dark:bg-neutral-950/80 dark:focus:border-neutral-600"
+          />
+          <button
+            type="button"
+            disabled={!canSubmit || disabled || isSubmitting}
+            onClick={() => void handleSubmit()}
+            className="mb-0.5 shrink-0 rounded-xl bg-neutral-950 px-4 py-2.5 text-xs font-semibold text-white transition hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-40 dark:bg-neutral-100 dark:text-neutral-950 dark:hover:bg-white"
+          >
+            {isSubmitting ? "Saving..." : "Submit"}
+          </button>
+        </div>
       ) : null}
 
       {error ? <p className="mt-2 text-xs text-rose-500">{error}</p> : null}

@@ -11,6 +11,7 @@ export const graphQueryTool = createTool({
     minScore: z.number().min(0).max(1).optional(),
     since: z.string().optional(),
     nodeType: z.enum(['topic', 'entity', 'concept', 'preference']).optional(),
+    graphKind: z.enum(['exploration', 'preference', 'all']).optional(),
     limit: z.number().int().min(1).max(500).default(50),
   }),
   outputSchema: z.object({
@@ -19,6 +20,7 @@ export const graphQueryTool = createTool({
         id: z.string(),
         label: z.string(),
         nodeType: z.string(),
+        graphKind: z.string().optional(),
         frequency: z.number(),
         avgScore: z.number(),
         lastSeen: z.string(),
@@ -41,6 +43,7 @@ export const graphQueryTool = createTool({
       minScore: input.minScore,
       since: input.since,
       nodeType: input.nodeType,
+      graphKind: input.graphKind,
       limit: input.limit,
     });
 
@@ -59,12 +62,21 @@ export const graphQueryTool = createTool({
       .slice(0, 4)
       .map((node) => node.label);
 
+    const preferenceNodes = graph.nodes.filter(
+      (node) => node.graphKind === 'preference' || node.nodeType === 'preference',
+    );
+    const preferenceLabels = preferenceNodes
+      .slice(0, 6)
+      .map((node) => `${node.label} (${(node.avgScore * 100).toFixed(0)}%)`);
+
     const summary =
       topTopics.length > 0
         ? `Top interests: ${topTopics.join('; ')}. Rewarded patterns: ${
             rewardedTopics.join(', ') || 'none yet'
           }. Needs adjustment: ${
             needsAdjustmentTopics.join(', ') || 'none yet'
+          }. User preferences: ${
+            preferenceLabels.join(', ') || 'none yet'
           }. ${graph.edges.length} connections across ${graph.nodes.length} nodes.`
         : 'No knowledge graph data yet for this user.';
 
@@ -73,6 +85,7 @@ export const graphQueryTool = createTool({
         id: node.id,
         label: node.label,
         nodeType: node.nodeType,
+        graphKind: node.graphKind,
         frequency: node.frequency,
         avgScore: node.avgScore,
         lastSeen: node.lastSeen,

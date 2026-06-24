@@ -14,13 +14,16 @@
   "dependencies": {
     "@mastra/ai-sdk": "catalog:",
     "@mastra/client-js": "catalog:",
+    "@mastra/core": "latest",
     "@repo/ai-ui": "workspace:^",
     "@repo/ui": "workspace:*",
     "ai": "catalog:",
     "lucide-react": "catalog:",
     "next": "catalog:",
     "react": "catalog:",
-    "react-dom": "catalog:"
+    "react-dom": "catalog:",
+    "sonner": "^2.0.7",
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@repo/eslint-config": "workspace:*",

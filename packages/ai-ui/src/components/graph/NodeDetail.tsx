@@ -18,16 +18,16 @@ export type NodeDetailProps = {
 };
 
 const NODE_TYPE_COLORS: Record<string, string> = {
-  system: "#22d3ee",
-  topic: "#a855f7",
-  entity: "#10b981",
-  concept: "#3b82f6",
-  preference: "#f59e0b",
-  feature: "#ec4899",
+  system: "#0D9488",
+  topic: "#7C3AED",
+  entity: "#059669",
+  concept: "#2563EB",
+  preference: "#D97706",
+  feature: "#DB2777",
 };
 
 function getNodeColor(nodeType: string): string {
-  return NODE_TYPE_COLORS[nodeType] ?? "#64748b";
+  return NODE_TYPE_COLORS[nodeType] ?? "#6B7280";
 }
 
 export function NodeDetail({ node, onClose, relatedNodes = [] }: NodeDetailProps) {
@@ -38,11 +38,13 @@ export function NodeDetail({ node, onClose, relatedNodes = [] }: NodeDetailProps
 
   return (
     <div
-      className="absolute right-4 top-4 z-10 w-72 rounded-lg border p-4 shadow-xl"
+      className="absolute right-4 bottom-4 z-10 w-72 max-w-[calc(100%-2rem)] rounded-lg border p-4"
       style={{
-        background: "rgba(16, 16, 24, 0.96)",
-        borderColor: `${accentColor}30`,
+        background: "rgba(255, 255, 255, 0.96)",
+        borderColor: `${accentColor}20`,
         backdropFilter: "blur(20px)",
+        boxShadow: "0 4px 20px rgba(0,0,0,0.08)",
+        animation: "nodeDetailSlideIn 0.2s ease-out",
       }}
     >
       <div className="flex items-start justify-between">
@@ -52,22 +54,22 @@ export function NodeDetail({ node, onClose, relatedNodes = [] }: NodeDetailProps
             style={{
               background: `${accentColor}18`,
               color: accentColor,
-              border: `1px solid ${accentColor}30`,
+              border: `1px solid ${accentColor}20`,
             }}
           >
             {node.nodeType}
           </span>
           <h3
             className="mt-1.5 text-base font-semibold"
-            style={{ color: "#e4e4ed" }}
+            style={{ color: "#1A1A1A" }}
           >
             {node.label}
           </h3>
         </div>
         <button
           onClick={onClose}
-          className="rounded-md p-1 transition-colors hover:bg-white/10"
-          style={{ color: "#5a5a70" }}
+          className="rounded-md p-1 transition-colors hover:bg-black/5"
+          style={{ color: "#9C9C9C" }}
           aria-label="Close"
         >
           <X className="h-4 w-4" />
@@ -76,22 +78,22 @@ export function NodeDetail({ node, onClose, relatedNodes = [] }: NodeDetailProps
 
       <div
         className="mt-4 rounded-md p-3"
-        style={{ background: `${accentColor}10` }}
+        style={{ background: `${accentColor}08` }}
       >
         <div className="flex items-center gap-2">
           <TrendingUp className="h-4 w-4" style={{ color: accentColor }} />
-          <span className="text-sm font-medium" style={{ color: "#e4e4ed" }}>
+          <span className="text-sm font-medium" style={{ color: "#1A1A1A" }}>
             Score: {scorePercent}%
           </span>
         </div>
       </div>
 
       <div className="mt-4 space-y-2.5 text-sm">
-        <div className="flex items-center gap-2" style={{ color: "#8888a0" }}>
+        <div className="flex items-center gap-2" style={{ color: "#6B6B6B" }}>
           <Hash className="h-4 w-4" />
           <span>Frequency: {node.frequency}</span>
         </div>
-        <div className="flex items-center gap-2" style={{ color: "#8888a0" }}>
+        <div className="flex items-center gap-2" style={{ color: "#6B6B6B" }}>
           <Calendar className="h-4 w-4" />
           <span>
             Last active: {new Date(node.lastSeen).toLocaleDateString()}
@@ -103,7 +105,7 @@ export function NodeDetail({ node, onClose, relatedNodes = [] }: NodeDetailProps
         <div className="mt-4">
           <h4
             className="mb-2 text-[10px] font-semibold uppercase tracking-wider"
-            style={{ color: "#5a5a70" }}
+            style={{ color: "#9C9C9C" }}
           >
             Connected topics
           </h4>
@@ -113,9 +115,9 @@ export function NodeDetail({ node, onClose, relatedNodes = [] }: NodeDetailProps
                 key={label}
                 className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px]"
                 style={{
-                  background: "rgba(255,255,255,0.04)",
-                  color: "#8888a0",
-                  border: "1px solid rgba(255,255,255,0.06)",
+                  background: "rgba(0,0,0,0.03)",
+                  color: "#6B6B6B",
+                  border: "1px solid rgba(0,0,0,0.06)",
                 }}
               >
                 {label}

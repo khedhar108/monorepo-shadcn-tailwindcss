@@ -2,7 +2,6 @@
 
 import {
   Clock,
-  Hash,
   MessageSquare,
   Plus,
   RotateCcw,
@@ -17,6 +16,8 @@ export type ThreadInfo = {
   feedbackCount: number;
   lastActive: string;
   topics: string[];
+  lastQuery?: string;
+  lastResult?: string;
 };
 
 export type ChatHistoryProps = {
@@ -54,6 +55,8 @@ type HistoryFileEntry = {
   lastActive: string;
   messageCount: number;
   feedbackCount: number;
+  lastQuery?: string;
+  lastResult?: string;
 };
 
 function historyEntryToThread(entry: HistoryFileEntry): ThreadInfo {
@@ -63,6 +66,8 @@ function historyEntryToThread(entry: HistoryFileEntry): ThreadInfo {
     feedbackCount: entry.feedbackCount,
     lastActive: entry.lastActive,
     topics: entry.topics,
+    lastQuery: entry.lastQuery ?? entry.firstMessage ?? "",
+    lastResult: entry.lastResult ?? "",
   };
 }
 
@@ -82,32 +87,50 @@ export function ChatHistory({
     setError(null);
 
     try {
-      /* Try Mastra threads API first */
-      const response = await fetch(
-        `/api/threads?userId=${encodeURIComponent(userId)}`,
-      );
+      /* Fetch from both Mastra threads API and history file, then merge */
+      const [threadsResponse, historyResponse] = await Promise.allSettled([
+        fetch(`/api/threads?userId=${encodeURIComponent(userId)}`),
+        fetch(`/api/history?userId=${encodeURIComponent(userId)}`),
+      ]);
 
-      if (response.ok) {
-        const data = (await response.json()) as { threads?: ThreadInfo[] };
-        const mastraThreads = data.threads ?? [];
+      const mastraThreads: ThreadInfo[] =
+        threadsResponse.status === "fulfilled" && threadsResponse.value.ok
+          ? ((await threadsResponse.value.json()) as { threads?: ThreadInfo[] }).threads ?? []
+          : [];
 
-        if (mastraThreads.length > 0) {
-          setThreads(mastraThreads);
-          return;
-        }
+      const historyEntries: HistoryFileEntry[] =
+        historyResponse.status === "fulfilled" && historyResponse.value.ok
+          ? ((await historyResponse.value.json()) as { entries?: HistoryFileEntry[] }).entries ?? []
+          : [];
+
+      /* Build a map of threadId → query/result from history file */
+      const historyMap = new Map<string, { lastQuery?: string; lastResult?: string; messageCount?: number; feedbackCount?: number }>();
+      for (const entry of historyEntries) {
+        historyMap.set(entry.threadId, {
+          lastQuery: entry.lastQuery ?? entry.firstMessage ?? "",
+          lastResult: entry.lastResult ?? "",
+          messageCount: entry.messageCount,
+          feedbackCount: entry.feedbackCount,
+        });
       }
 
-      /* Fallback: read from persistent history file */
-      const historyRes = await fetch(
-        `/api/history?userId=${encodeURIComponent(userId)}`,
-      );
+      /* Merge: prefer Mastra threads for the list, enrich with history file data */
+      if (mastraThreads.length > 0) {
+        const merged = mastraThreads.map((t) => {
+          const histData = historyMap.get(t.threadId);
+          return {
+            ...t,
+            lastQuery: t.lastQuery ?? histData?.lastQuery ?? t.topics[0] ?? "",
+            lastResult: t.lastResult ?? histData?.lastResult ?? "",
+          };
+        });
+        setThreads(merged);
+        return;
+      }
 
-      if (historyRes.ok) {
-        const historyData = (await historyRes.json()) as {
-          entries?: HistoryFileEntry[];
-        };
-        const entries = historyData.entries ?? [];
-        setThreads(entries.map(historyEntryToThread));
+      /* Fallback: use history file entries only */
+      if (historyEntries.length > 0) {
+        setThreads(historyEntries.map(historyEntryToThread));
         return;
       }
 
@@ -217,9 +240,10 @@ export function ChatHistory({
             </p>
           </div>
         ) : (
-          <div className="space-y-0.5 px-2 py-2">
+          <div className="space-y-1 px-2 py-2">
             {threads.map((thread) => {
               const isActive = thread.threadId === currentThreadId;
+              const query = thread.lastQuery || thread.topics[0] || "New conversation";
               return (
                 <button
                   key={thread.threadId}
@@ -245,43 +269,25 @@ export function ChatHistory({
                       e.currentTarget.style.background = "transparent";
                     }
                   }}
+                  title={query}
                 >
-                  {thread.topics.length > 0 ? (
-                    <div className="mb-1.5 flex flex-wrap gap-1">
-                      {thread.topics.slice(0, 3).map((topic) => (
-                        <span
-                          key={topic}
-                          className="inline-flex items-center gap-0.5 rounded-full px-2 py-0.5 text-[10px]"
-                          style={{
-                            background: "var(--aria-surface-inset, #F4F3F0)",
-                            color: "var(--aria-text-secondary, #6B6B6B)",
-                          }}
-                        >
-                          <Hash className="size-2.5" />
-                          {topic}
-                        </span>
-                      ))}
-                      {thread.topics.length > 3 ? (
-                        <span
-                          className="text-[10px]"
-                          style={{ color: "var(--aria-text-tertiary, #9C9C9C)" }}
-                        >
-                          +{thread.topics.length - 3}
-                        </span>
-                      ) : null}
-                    </div>
-                  ) : null}
+                  <p
+                    className="truncate text-[12px] font-semibold leading-snug"
+                    style={{ color: "var(--aria-text-primary, #1A1A1A)" }}
+                  >
+                    {query}
+                  </p>
                   <div
-                    className="flex items-center gap-3 text-[11px]"
+                    className="mt-1.5 flex items-center gap-3 text-[10px]"
                     style={{ color: "var(--aria-text-tertiary, #9C9C9C)" }}
                   >
                     <span className="flex items-center gap-1">
-                      <MessageSquare className="size-3" />
+                      <MessageSquare className="size-2.5" />
                       {thread.messageCount}
                     </span>
                     {thread.feedbackCount > 0 ? (
                       <span className="flex items-center gap-1">
-                        <ThumbsUp className="size-3" />
+                        <ThumbsUp className="size-2.5" />
                         {thread.feedbackCount}
                       </span>
                     ) : null}

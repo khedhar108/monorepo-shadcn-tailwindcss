@@ -36,6 +36,7 @@
   --aria-shadow-md: 0 4px 16px rgba(0, 0, 0, 0.06), 0 1px 4px rgba(0, 0, 0, 0.04);
   --aria-shadow-lg: 0 12px 40px rgba(0, 0, 0, 0.08), 0 4px 12px rgba(0, 0, 0, 0.04);
   --aria-shadow-xl: 0 20px 60px rgba(0, 0, 0, 0.1), 0 8px 20px rgba(0, 0, 0, 0.05);
+  --aria-glass-border: rgba(255, 255, 255, 0.6);
 }
 
 /* ── Base ────────────────────────────────────────────────── */
@@ -167,6 +168,25 @@ body {
   box-shadow: var(--aria-shadow-md), inset 0 1px 0 rgba(255, 255, 255, 1);
 }
 
+/* ponytail: highest tier — floats above base/raised, used for tool cards, NodeDetail, dropdowns */
+.aria-glass-float {
+  background: rgba(255, 255, 255, 0.88);
+  backdrop-filter: blur(32px) saturate(1.5);
+  border: 1px solid var(--aria-glass-border);
+  box-shadow: var(--aria-shadow-lg), inset 0 1px 0 rgba(255, 255, 255, 1);
+}
+
+/* ── Message entrance ── */
+
+@keyframes aria-msg-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+
+.aria-msg-in {
+  animation: aria-msg-in 0.35s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
 /* ── Surface Panels ──────────────────────────────────────── */
 
 .aria-panel {
@@ -253,4 +273,17 @@ body {
 
 .aria-glow-emerald {
   box-shadow: 0 0 12px rgba(5, 150, 105, 0.15);
+}
+
+/* ── Knowledge Graph Node Detail Animation ───────────────── */
+
+@keyframes nodeDetailSlideIn {
+  from {
+    opacity: 0;
+    transform: translateX(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
 }

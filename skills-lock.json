@@ -7,6 +7,12 @@
       "skillPath": "plugins/aceternity-ui/skills/aceternity-ui/SKILL.md",
       "computedHash": "c14782ab99da57707caa44b33edbddcb70344e6450b22600c66623e54de7aec8"
     },
+    "brainstorming": {
+      "source": "obra/superpowers",
+      "sourceType": "github",
+      "skillPath": "skills/brainstorming/SKILL.md",
+      "computedHash": "0c877c8521ec97a5d55fa682d33122b811aebddd4788b92ac008efe85cd305cd"
+    },
     "frontend-design": {
       "source": "anthropics/skills",
       "sourceType": "github",
@@ -24,6 +30,12 @@
       "sourceType": "github",
       "skillPath": "skills/nextjs-supabase-auth/SKILL.md",
       "computedHash": "f2f8b00877ed450e4b5d1e040b52c1c4d312ec2264c75d2248253814c2a9e9ba"
+    },
+    "ponytail": {
+      "source": "dietrichgebert/ponytail",
+      "sourceType": "github",
+      "skillPath": "skills/ponytail/SKILL.md",
+      "computedHash": "e51ac73040c3ccb635cbd4728f4e3497a1b732362b812a92badf758ea9e0696f"
     },
     "shadcn": {
       "source": "shadcn/ui",

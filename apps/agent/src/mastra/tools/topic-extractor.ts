@@ -26,6 +26,7 @@ export const topicExtractorTool = createTool({
     threadId: z.string().min(1).optional(),
     messageId: z.string().min(1).optional(),
     topics: z.array(topicSchema).min(2).max(5),
+    graphKind: z.enum(['exploration', 'preference']).default('exploration'),
     userMessage: z.string().optional(),
     assistantMessage: z.string().optional(),
   }),
@@ -50,7 +51,7 @@ export const topicExtractorTool = createTool({
   }),
   execute: async (input, context) => {
     const userId =
-      input.userId ?? requestContextValue(context, 'userId') ?? 'anonymous-user';
+      input.userId ?? requestContextValue(context, 'userId') ?? 'global';
     const threadId =
       input.threadId ?? requestContextValue(context, 'threadId') ?? 'anonymous-thread';
     const messageId = input.messageId ?? `message-${Date.now()}`;
@@ -60,6 +61,7 @@ export const topicExtractorTool = createTool({
         userId,
         label: topic.label,
         nodeType: topic.nodeType,
+        graphKind: input.graphKind,
         messageId,
         threadId,
         metadata: {

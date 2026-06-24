@@ -38,6 +38,7 @@ export async function POST(request: Request) {
     const body = (await request.json()) as {
       threadId: string;
       messages: StoredMessage[];
+      userId?: string;
     };
 
     if (!body.threadId || !Array.isArray(body.messages)) {
@@ -47,7 +48,7 @@ export async function POST(request: Request) {
       );
     }
 
-    await appendMessages(body.threadId, body.messages);
+    await appendMessages(body.threadId, body.messages, body.userId);
 
     return Response.json({ ok: true });
   } catch {

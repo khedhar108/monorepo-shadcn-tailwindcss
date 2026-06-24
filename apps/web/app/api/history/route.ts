@@ -58,6 +58,8 @@ export async function POST(request: Request) {
       messages: Array.isArray((body as Record<string, unknown>).messages)
         ? (body as Record<string, unknown>).messages as HistoryEntry["messages"]
         : [],
+      lastQuery: (body as Record<string, unknown>).lastQuery as string | undefined,
+      lastResult: (body as Record<string, unknown>).lastResult as string | undefined,
     };
 
     await appendHistoryEntry(entry);

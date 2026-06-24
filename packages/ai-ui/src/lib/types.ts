@@ -41,3 +41,37 @@ export function formatModelName(modelId: string): string {
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(" ");
 }
+
+/* ── Persisted message parts (tool/reasoning history round-trip) ── */
+
+/**
+ * A storage-safe subset of the AI SDK's UIMessage parts. Only terminal tool
+ * states are persisted; live-only states (input-streaming, input-available)
+ * collapse to output-available/output-error on finish. The renderer's
+ * isToolPart()/AgentToolPart consume this shape unchanged.
+ */
+export type SerializablePart =
+  | { type: "text"; text: string }
+  | { type: "reasoning"; text: string }
+  | {
+      type: "dynamic-tool";
+      toolName: string;
+      state: "output-available" | "output-error";
+      input?: unknown;
+      output?: unknown;
+      errorText?: string;
+    };
+
+/**
+ * A persisted chat message. `content` is the plain-text fallback (and the
+ * field all existing text consumers read); `parts` carries the structured
+ * reasoning/tool flow for assistant turns. Omitted for user messages and
+ * for pre-parts history entries (graceful fallback).
+ */
+export type StoredMessage = {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  createdAt: string;
+  parts?: SerializablePart[];
+};

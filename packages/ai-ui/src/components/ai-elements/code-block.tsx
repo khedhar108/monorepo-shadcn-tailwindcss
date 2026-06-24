@@ -271,7 +271,8 @@ const CodeBlockBody = memo(
     return (
       <pre
         className={cn(
-          "dark:!bg-[var(--shiki-dark-bg)] dark:!text-[var(--shiki-dark)] m-0 p-4 text-sm",
+          "dark:!bg-[var(--shiki-dark-bg)] dark:!text-[var(--shiki-dark)] m-0 max-w-full overflow-x-auto p-4 text-sm",
+          "whitespace-pre-wrap break-words [overflow-wrap:anywhere]",
           className
         )}
         style={preStyle}
@@ -419,7 +420,7 @@ export const CodeBlockContent = ({
   const tokenized = asyncTokens ?? syncTokens;
 
   return (
-    <div className="relative overflow-auto">
+    <div className="relative max-w-full overflow-x-auto">
       <CodeBlockBody showLineNumbers={showLineNumbers} tokenized={tokenized} />
     </div>
   );

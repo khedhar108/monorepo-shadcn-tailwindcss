@@ -56,6 +56,14 @@ export type StreamAgentOptions = {
     resource?: string;
   };
   requestContext?: Record<string, string>;
+  /** Tool-object keys the LLM may call this turn. `undefined` = all tools. */
+  activeTools?: string[];
+  /** Controls whether the model may use tools at all. */
+  toolChoice?: "none" | "auto" | "required";
+  /** Extra system context (preferences, behavior) prepended to the agent's system message. */
+  systemContext?: string;
+  /** Called once when the stream completes, with the full assistant text. */
+  onFinish?: (result: { assistantText: string }) => Promise<void> | void;
 };
 
 type AgentStreamResponse = Response & {
@@ -71,7 +79,13 @@ type AgentStreamOptions = NonNullable<
 function buildAgentStreamOptions({
   memory,
   requestContext,
-}: Pick<StreamAgentOptions, "memory" | "requestContext">): AgentStreamOptions {
+  activeTools,
+  toolChoice,
+  systemContext,
+}: Pick<
+  StreamAgentOptions,
+  "memory" | "requestContext" | "activeTools" | "toolChoice" | "systemContext"
+>): AgentStreamOptions {
   const options: AgentStreamOptions = {
     maxSteps: 20,
   };
@@ -88,24 +102,53 @@ function buildAgentStreamOptions({
       requestContext as unknown as AgentStreamOptions["requestContext"];
   }
 
+  if (activeTools !== undefined) {
+    (options as Record<string, unknown>).activeTools = activeTools;
+  }
+
+  if (toolChoice !== undefined) {
+    (options as Record<string, unknown>).toolChoice = toolChoice;
+  }
+
+  if (systemContext) {
+    (options as Record<string, unknown>).system = systemContext;
+  }
+
   return options;
 }
 
 function createMastraChunkStream(
   response: AgentStreamResponse,
+  onFinish?: (text: string) => Promise<void> | void,
 ): ReadableStream<unknown> {
+  let assistantText = "";
   return new ReadableStream<unknown>({
-    start(controller) {
-      response
-        .processDataStream({
+    async start(controller) {
+      try {
+        await response.processDataStream({
           onChunk: async (chunk) => {
+            // ponytail: Mastra ChunkType puts text at payload.text for text-delta
+            const c = chunk as {
+              type?: string;
+              text?: string;
+              payload?: { text?: string };
+            };
+            if (typeof c.text === "string") assistantText += c.text;
+            if (c.type === "text-delta" && typeof c.payload?.text === "string") {
+              assistantText += c.payload.text;
+            }
             controller.enqueue(chunk);
           },
-        })
-        .then(
-          () => controller.close(),
-          (error: unknown) => controller.error(error),
-        );
+        });
+        try {
+          await onFinish?.(assistantText);
+        } catch {
+          // non-critical — don't break the stream if persistence fails
+        }
+        controller.close();
+      } catch (error: unknown) {
+        controller.error(error);
+      }
     },
   });
 }
@@ -115,16 +158,29 @@ export async function streamAgentToAiSdk({
   memory,
   messages,
   requestContext,
+  activeTools,
+  toolChoice,
+  systemContext,
+  onFinish,
 }: StreamAgentOptions) {
   const resolvedAgentId = assertAgentId(agentId);
   const agent = mastraClient.getAgent(resolvedAgentId);
 
   const response = (await agent.stream(
     messages as Parameters<ReturnType<MastraClient["getAgent"]>["stream"]>[0],
-    buildAgentStreamOptions({ memory, requestContext }),
+    buildAgentStreamOptions({
+      memory,
+      requestContext,
+      activeTools,
+      toolChoice,
+      systemContext,
+    }),
   )) as AgentStreamResponse;
 
-  const chunkStream = createMastraChunkStream(response);
+  const chunkStream = createMastraChunkStream(
+    response,
+    onFinish ? (text) => onFinish({ assistantText: text }) : undefined,
+  );
   const aiSdkStream = toAISdkStream(
     chunkStream as unknown as Parameters<typeof toAISdkStream>[0],
     {
