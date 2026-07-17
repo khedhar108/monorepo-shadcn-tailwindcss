@@ -377,13 +377,13 @@ function HomeContent() {
           >
             {/* Graph toolbar */}
             <div
-              className="flex shrink-0 items-center justify-between gap-2 px-3 py-2.5"
+              className="flex shrink-0 items-center justify-between gap-3 px-3 py-3"
               style={{
                 borderBottom: "1px solid var(--aria-border-subtle, #F0EEED)",
               }}
             >
               <div className="min-w-0">
-                <div className="flex items-center gap-1.5">
+                <div className="flex items-center gap-2">
                   <Stars
                     className="size-3.5"
                     style={{ color: "var(--aria-emerald, #059669)" }}
@@ -396,13 +396,13 @@ function HomeContent() {
                   </p>
                 </div>
               </div>
-              <div className="flex shrink-0 items-center gap-1">
+              <div className="flex shrink-0 items-center gap-2">
                 <Button
                   type="button"
                   variant="outline"
                   size="sm"
                   onClick={toggleGraphExpanded}
-                  className="group h-7 px-2 text-xs transition-all hover:scale-105 active:scale-95"
+                  className="group h-8 px-2.5 text-xs transition-all hover:scale-105 active:scale-95"
                   style={{
                     borderColor: "var(--aria-border, #E8E5E0)",
                     background: "var(--aria-surface-inset, #F4F3F0)",
@@ -410,21 +410,21 @@ function HomeContent() {
                   }}
                   aria-label="Expand graph"
                 >
-                  <Maximize2 className="size-3 transition-transform group-hover:scale-110" />
+                  <Maximize2 className="size-3.5 transition-transform group-hover:scale-110" />
                 </Button>
                 <Button
                   type="button"
                   variant="outline"
                   size="sm"
                   onClick={refreshGraph}
-                  className="group h-7 px-2 text-xs transition-all hover:scale-105 active:scale-95"
+                  className="group h-8 px-2.5 text-xs transition-all hover:scale-105 active:scale-95"
                   style={{
                     borderColor: "var(--aria-border, #E8E5E0)",
                     background: "var(--aria-surface-inset, #F4F3F0)",
                     color: "var(--aria-text-secondary, #6B6B6B)",
                   }}
                 >
-                  <RefreshCcw className="size-3 transition-transform group-hover:rotate-180" />
+                  <RefreshCcw className="size-3.5 transition-transform group-hover:rotate-180" />
                 </Button>
               </div>
             </div>
@@ -553,28 +553,28 @@ function HomeContent() {
                 demoMode={demoMode}
                 onDemoModeChange={setDemoMode}
               />
-            </div>
 
-            {/* Feedback hint overlay */}
-            <div
-              className="pointer-events-none absolute bottom-8 right-8 max-w-56 rounded-xl px-4 py-3 text-xs leading-5"
-              style={{
-                background: "rgba(255, 255, 255, 0.92)",
-                border: "1px solid var(--aria-border, #E8E5E0)",
-                color: "var(--aria-text-secondary, #6B6B6B)",
-                backdropFilter: "blur(12px)",
-                boxShadow: "0 2px 8px rgba(0, 0, 0, 0.05)",
-              }}
-            >
+              {/* Above the graph summary strip — never overlaps bottom row */}
               <div
-                className="mb-1 flex items-center gap-1.5 font-semibold"
-                style={{ color: "var(--aria-emerald, #059669)" }}
+                className="pointer-events-none absolute bottom-16 right-4 z-20 max-w-52 rounded-xl px-4 py-3 text-xs leading-5"
+                style={{
+                  background: "rgba(255, 255, 255, 0.96)",
+                  border: "1px solid var(--aria-border, #E8E5E0)",
+                  color: "var(--aria-text-secondary, #6B6B6B)",
+                  backdropFilter: "blur(12px)",
+                  boxShadow: "0 2px 8px rgba(0, 0, 0, 0.05)",
+                }}
               >
-                <Zap className="size-3.5" />
-                Feedback loop is live
+                <div
+                  className="mb-1 flex items-center gap-1.5 font-semibold"
+                  style={{ color: "var(--aria-emerald, #059669)" }}
+                >
+                  <Zap className="size-3.5" />
+                  Feedback loop is live
+                </div>
+                Rate an answer in chat — ARIA shifts graph nodes toward green,
+                yellow, or red.
               </div>
-              Rate an answer in chat — ARIA shifts graph nodes toward green,
-              yellow, or red.
             </div>
           </div>
         </div>

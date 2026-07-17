@@ -9,9 +9,8 @@ import {
   RotateCcw,
   Settings2,
   FlaskConical,
-  MoreHorizontal,
 } from "lucide-react";
-import { useState, type CSSProperties, type MouseEvent } from "react";
+import { useRef, useState, type CSSProperties, type MouseEvent, type ReactNode } from "react";
 
 export type GraphLayout = "force" | "radial" | "tree";
 
@@ -79,16 +78,19 @@ function SliderRow({
   onChange: (v: number) => void;
 }) {
   return (
-    <div>
+    <div className="grid grid-cols-[1fr_auto] items-center gap-x-3 gap-y-2">
       <label
-        className="mb-1.5 flex items-center justify-between text-[11px] font-medium"
+        className="text-[11px] font-medium leading-none"
         style={{ color: TEXT_SECONDARY }}
       >
         {label}
-        <span className="font-mono" style={{ color: TEXT_PRIMARY }}>
-          {displayValue}
-        </span>
       </label>
+      <span
+        className="min-w-[4.5rem] text-right font-mono text-[11px] tabular-nums leading-none"
+        style={{ color: TEXT_PRIMARY }}
+      >
+        {displayValue}
+      </span>
       <input
         type="range"
         min={min}
@@ -96,12 +98,32 @@ function SliderRow({
         step={step}
         value={value}
         onChange={(e) => onChange(parseFloat(e.target.value))}
-        className="h-1.5 w-full cursor-pointer appearance-none rounded-full"
+        className="col-span-2 h-1.5 w-full cursor-pointer appearance-none rounded-full"
         style={{
           background: `linear-gradient(to right, ${ACCENT_DIM}, ${ACCENT})`,
           accentColor: ACCENT,
         }}
       />
+    </div>
+  );
+}
+
+function FieldRow({
+  label,
+  children,
+}: {
+  label: string;
+  children: ReactNode;
+}) {
+  return (
+    <div className="grid grid-cols-[1fr_minmax(0,1fr)] items-center gap-x-3 gap-y-1.5">
+      <label
+        className="text-[11px] font-medium leading-none"
+        style={{ color: TEXT_SECONDARY }}
+      >
+        {label}
+      </label>
+      <div className="min-w-0">{children}</div>
     </div>
   );
 }
@@ -127,8 +149,8 @@ export function GraphControls({
   compact = false,
 }: GraphControlsProps) {
   const [showFilters, setShowFilters] = useState(false);
-  const [showMore, setShowMore] = useState(false);
   const [activeTab, setActiveTab] = useState<"filter" | "physics">("filter");
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
   const scoreLabel =
     minScore <= 0.1 ? "All" : minScore >= 0.7 ? "High only" : `\u2265 ${Math.round(minScore * 100)}%`;
@@ -152,13 +174,12 @@ export function GraphControls({
   } as CSSProperties;
 
   const baseInputStyle = {
-    background: SURFACE,
+    background: ELEVATED,
     borderColor: BORDER,
-    backdropFilter: "blur(12px)",
   };
 
   const iconBtnClass =
-    "group flex h-7 w-7 shrink-0 items-center justify-center rounded-md border shadow-sm transition-all hover:shadow-md hover:scale-105 active:scale-95";
+    "group flex h-8 w-8 shrink-0 items-center justify-center rounded-md border shadow-sm transition-all hover:shadow-md hover:scale-105 active:scale-95";
 
   const applyHover = (e: MouseEvent<HTMLButtonElement>, active = false) => {
     if (active) return;
@@ -169,231 +190,202 @@ export function GraphControls({
     Object.assign(e.currentTarget.style, baseBtnStyle);
   };
 
-  const moreActive = showMore || showFilters || demoMode;
+  const activeBtnStyle = {
+    background: `${ACCENT}14`,
+    borderColor: ACCENT,
+    color: ACCENT,
+    backdropFilter: "blur(12px)",
+  } as CSSProperties;
 
-  return (
-    <div className="flex w-full min-w-0 flex-col gap-1.5">
-      {/* Toolbar — container-aware: compact stacks search + icon cluster;
-          expanded keeps a single row with labeled Settings/Demo/Fit. */}
-      <div
+  const Divider = () => (
+    <div
+      className="mx-0.5 h-5 w-px shrink-0 self-center"
+      style={{ background: BORDER }}
+      aria-hidden="true"
+    />
+  );
+
+  const searchField = (
+    <div
+      className={
+        compact
+          ? "flex h-9 w-full min-w-0 items-center gap-2 rounded-md border px-2.5 shadow-sm"
+          : "flex h-8 min-w-[160px] flex-1 items-center gap-2 rounded-md border px-3 shadow-sm transition-shadow hover:shadow-md"
+      }
+      style={{ ...baseInputStyle, color: TEXT_PRIMARY }}
+      onClick={() => searchInputRef.current?.focus()}
+    >
+      <Search className="h-3.5 w-3.5 shrink-0" style={{ color: TEXT_MUTED }} />
+      <input
+        ref={searchInputRef}
+        type="search"
+        value={searchQuery}
+        onChange={(e) => onSearchChange(e.target.value)}
+        placeholder={compact ? "Find nodes…" : "Find nodes…"}
+        className="min-w-0 flex-1 bg-transparent text-[12px] outline-none"
+        style={{ color: TEXT_PRIMARY }}
+        aria-label="Find nodes"
+        autoComplete="off"
+      />
+    </div>
+  );
+
+  const settingsButton = (
+    <button
+      type="button"
+      onClick={() => setShowFilters((v) => !v)}
+      className={
+        compact
+          ? iconBtnClass
+          : "flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-md border px-2.5 text-[12px] font-medium whitespace-nowrap shadow-sm transition-all hover:shadow-md active:scale-95"
+      }
+      style={showFilters ? activeBtnStyle : { ...baseBtnStyle }}
+      aria-label="Settings"
+      aria-pressed={showFilters}
+      title="Settings"
+    >
+      <Filter className="h-3.5 w-3.5 shrink-0" />
+      {!compact && <span>Settings</span>}
+    </button>
+  );
+
+  const demoButton =
+    onDemoModeChange != null ? (
+      <button
+        type="button"
+        onClick={() => onDemoModeChange(!demoMode)}
         className={
           compact
-            ? "flex w-full min-w-0 flex-col gap-1"
-            : "flex w-full min-w-0 flex-wrap items-center gap-1"
+            ? iconBtnClass
+            : "flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-md border px-2.5 text-[12px] font-medium whitespace-nowrap shadow-sm transition-all hover:shadow-md active:scale-95"
         }
+        style={demoMode ? activeBtnStyle : { ...baseBtnStyle }}
+        title="Toggle demo graph (50+ nodes)"
+        aria-label="Demo mode"
+        aria-pressed={demoMode}
       >
-        <div
-          className={
-            compact
-              ? "flex h-7 w-full min-w-0 items-center gap-1.5 rounded-md border px-1.5 shadow-sm"
-              : "flex h-7 min-w-[140px] flex-1 items-center gap-1.5 rounded-md border px-2 shadow-sm transition-shadow hover:shadow-md"
-          }
-          style={{ ...baseInputStyle, color: TEXT_PRIMARY }}
-        >
-          <Search className="h-3 w-3 shrink-0" style={{ color: TEXT_MUTED }} />
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => onSearchChange(e.target.value)}
-            placeholder={compact ? "Find…" : "Find nodes…"}
-            className="min-w-0 flex-1 bg-transparent text-[11px] outline-none"
-            style={{ color: TEXT_PRIMARY }}
-          />
-        </div>
+        <FlaskConical className="h-3.5 w-3.5 shrink-0" />
+        {!compact && <span>Demo</span>}
+      </button>
+    ) : null;
 
-        <div className="flex w-full min-w-0 items-center gap-1">
-          {/* Settings — expanded only; compact uses More menu */}
-          {!compact && (
-            <button
-              type="button"
-              onClick={() => setShowFilters(!showFilters)}
-              className="flex h-7 shrink-0 items-center justify-center gap-1 rounded-md border px-2 text-[12px] font-medium whitespace-nowrap shadow-sm transition-all hover:shadow-md active:scale-95"
-              style={
-                showFilters
-                  ? {
-                      background: `${ACCENT}14`,
-                      borderColor: ACCENT,
-                      color: ACCENT,
-                      backdropFilter: "blur(12px)",
-                    }
-                  : { ...baseBtnStyle }
-              }
-              aria-label="Settings"
-            >
-              <Filter className="h-3 w-3 shrink-0" />
-              <span>Settings</span>
-            </button>
-          )}
+  const zoomCluster = (
+    <div className="flex shrink-0 items-center gap-1.5">
+      {!compact && <Divider />}
+      <button
+        type="button"
+        onClick={onZoomOut}
+        className={iconBtnClass}
+        style={baseBtnStyle}
+        onMouseEnter={(e) => applyHover(e)}
+        onMouseLeave={(e) => clearHover(e)}
+        aria-label="Zoom out"
+      >
+        <Minus className="h-3.5 w-3.5" />
+      </button>
+      <button
+        type="button"
+        onClick={onFitAll}
+        className={
+          compact
+            ? iconBtnClass
+            : "group flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-md border px-2.5 text-[11px] font-medium shadow-sm transition-all hover:shadow-md hover:scale-105 active:scale-95"
+        }
+        style={baseBtnStyle}
+        onMouseEnter={(e) => applyHover(e)}
+        onMouseLeave={(e) => clearHover(e)}
+        aria-label="Fit to view"
+      >
+        <Maximize className="h-3.5 w-3.5" />
+        {!compact && <span>Fit</span>}
+      </button>
+      <button
+        type="button"
+        onClick={onZoomIn}
+        className={iconBtnClass}
+        style={baseBtnStyle}
+        onMouseEnter={(e) => applyHover(e)}
+        onMouseLeave={(e) => clearHover(e)}
+        aria-label="Zoom in"
+      >
+        <Plus className="h-3.5 w-3.5" />
+      </button>
+    </div>
+  );
 
-          {!compact && onDemoModeChange && (
-            <button
-              type="button"
-              onClick={() => onDemoModeChange(!demoMode)}
-              className="flex h-7 shrink-0 items-center justify-center gap-1 rounded-md border px-2 text-[12px] font-medium whitespace-nowrap shadow-sm transition-all hover:shadow-md active:scale-95"
-              style={
-                demoMode
-                  ? { background: `${ACCENT}14`, borderColor: ACCENT, color: ACCENT }
-                  : { ...baseBtnStyle }
-              }
-              title="Toggle demo graph (50+ nodes)"
-            >
-              <FlaskConical className="h-3 w-3 shrink-0" />
-              <span>Demo</span>
-            </button>
-          )}
-
-          {/* More menu — compact (and always available as overflow home) */}
-          {compact && (
-            <div className="relative shrink-0">
-              <button
-                type="button"
-                onClick={() => setShowMore((v) => !v)}
-                className={iconBtnClass}
-                style={
-                  moreActive
-                    ? { background: `${ACCENT}14`, borderColor: ACCENT, color: ACCENT }
-                    : { ...baseBtnStyle }
-                }
-                aria-label="More controls"
-                aria-expanded={showMore}
-              >
-                <MoreHorizontal className="h-3 w-3" />
-              </button>
-              {showMore && (
-                <>
+  return (
+    <div
+      className={`relative z-20 flex w-full min-w-0 flex-col ${
+        compact ? "gap-4" : "gap-2.5"
+      }`}
+    >
+      {compact ? (
+        <>
+          {/* Compact: full-width search so it is always tappable */}
+          <div className="w-full min-w-0">{searchField}</div>
+          <div className="flex w-full min-w-0 items-center justify-between gap-2">
+            <div className="flex shrink-0 items-center gap-1.5">
+              {settingsButton}
+              {demoButton}
+              {isLoading && (
+                <div
+                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border shadow-sm"
+                  style={{ ...baseInputStyle, color: TEXT_MUTED }}
+                >
                   <div
-                    className="fixed inset-0 z-30"
-                    onClick={() => setShowMore(false)}
-                    aria-hidden="true"
+                    className="h-2.5 w-2.5 animate-spin rounded-full border-2 border-t-transparent"
+                    style={{ borderColor: ACCENT, borderTopColor: "transparent" }}
                   />
-                  <div
-                    className="absolute left-0 top-8 z-40 w-36 rounded-md border py-1 shadow-lg"
-                    style={{
-                      background: SURFACE,
-                      borderColor: BORDER,
-                      backdropFilter: "blur(20px)",
-                      boxShadow: "0 4px 16px rgba(0,0,0,0.12)",
-                    }}
-                  >
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setShowFilters(!showFilters);
-                        setShowMore(false);
-                      }}
-                      className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[11px] font-medium transition-colors hover:bg-black/5"
-                      style={{ color: showFilters ? ACCENT : TEXT_PRIMARY }}
-                    >
-                      <Filter className="h-3 w-3" />
-                      Settings
-                    </button>
-                    {onDemoModeChange && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          onDemoModeChange(!demoMode);
-                          setShowMore(false);
-                        }}
-                        className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[11px] font-medium transition-colors hover:bg-black/5"
-                        style={{ color: demoMode ? ACCENT : TEXT_PRIMARY }}
-                      >
-                        <FlaskConical className="h-3 w-3" />
-                        Demo {demoMode ? "· on" : ""}
-                      </button>
-                    )}
-                  </div>
-                </>
+                </div>
               )}
             </div>
-          )}
-
-          {isLoading && (
-            <div
-              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border shadow-sm"
-              style={{ ...baseInputStyle, color: TEXT_MUTED }}
-            >
-              <div
-                className="h-2.5 w-2.5 animate-spin rounded-full border-2 border-t-transparent"
-                style={{ borderColor: ACCENT, borderTopColor: "transparent" }}
-              />
-            </div>
-          )}
-
-          <div className="ml-auto flex shrink-0 items-center gap-1">
-            {!compact && (
-              <div
-                className="mx-0.5 h-4 w-px shrink-0"
-                style={{ background: BORDER }}
-              />
-            )}
-            <button
-              type="button"
-              onClick={onZoomOut}
-              className={iconBtnClass}
-              style={baseBtnStyle}
-              onMouseEnter={(e) => applyHover(e)}
-              onMouseLeave={(e) => clearHover(e)}
-              aria-label="Zoom out"
-            >
-              <Minus className="h-3 w-3" />
-            </button>
-            <button
-              type="button"
-              onClick={onFitAll}
-              className={
-                compact
-                  ? iconBtnClass
-                  : "group flex h-7 shrink-0 items-center justify-center gap-1 rounded-md border px-2 text-[11px] font-medium shadow-sm transition-all hover:shadow-md hover:scale-105 active:scale-95"
-              }
-              style={baseBtnStyle}
-              onMouseEnter={(e) => applyHover(e)}
-              onMouseLeave={(e) => clearHover(e)}
-              aria-label="Fit to view"
-            >
-              <Maximize className="h-3 w-3" />
-              {!compact && <span>Fit</span>}
-            </button>
-            <button
-              type="button"
-              onClick={onZoomIn}
-              className={iconBtnClass}
-              style={baseBtnStyle}
-              onMouseEnter={(e) => applyHover(e)}
-              onMouseLeave={(e) => clearHover(e)}
-              aria-label="Zoom in"
-            >
-              <Plus className="h-3 w-3" />
-            </button>
+            {zoomCluster}
           </div>
+        </>
+      ) : (
+        <div className="flex w-full min-w-0 flex-wrap items-center gap-2.5">
+          {searchField}
+          <div className="flex shrink-0 items-center gap-2">
+            <Divider />
+            {settingsButton}
+            {demoButton}
+            {isLoading && (
+              <div
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border shadow-sm"
+                style={{ ...baseInputStyle, color: TEXT_MUTED }}
+              >
+                <div
+                  className="h-2.5 w-2.5 animate-spin rounded-full border-2 border-t-transparent"
+                  style={{ borderColor: ACCENT, borderTopColor: "transparent" }}
+                />
+              </div>
+            )}
+          </div>
+          {zoomCluster}
         </div>
-      </div>
+      )}
 
       {showFilters && (
         <div
-          className={
-            compact
-              ? "mt-1 w-full rounded-md border shadow-sm"
-              : "mt-1 w-full max-w-64 rounded-md border shadow-sm"
-          }
+          className="w-full overflow-hidden rounded-xl border shadow-sm"
           style={{
             background: SURFACE,
             borderColor: BORDER,
-            backdropFilter: "blur(20px)",
-            boxShadow: "0 4px 16px rgba(0,0,0,0.06)",
+            boxShadow: "0 8px 24px rgba(0,0,0,0.06)",
           }}
         >
           <div
             className="flex border-b"
-            style={{ borderColor: BORDER_SUBTLE, borderStyle: "dashed" }}
+            style={{ borderColor: BORDER_SUBTLE }}
           >
             <button
               type="button"
               onClick={() => setActiveTab("filter")}
-              className="flex flex-1 items-center justify-center gap-1.5 px-3 py-2 text-xs font-medium transition-colors"
+              className="flex flex-1 items-center justify-center gap-1.5 px-3 py-2.5 text-xs font-medium transition-colors"
               style={
                 activeTab === "filter"
                   ? { borderBottom: `2px solid ${ACCENT}`, color: ACCENT }
-                  : { color: TEXT_SECONDARY }
+                  : { color: TEXT_SECONDARY, borderBottom: "2px solid transparent" }
               }
             >
               <Filter className="h-3 w-3" />
@@ -402,11 +394,11 @@ export function GraphControls({
             <button
               type="button"
               onClick={() => setActiveTab("physics")}
-              className="flex flex-1 items-center justify-center gap-1.5 px-3 py-2 text-xs font-medium transition-colors"
+              className="flex flex-1 items-center justify-center gap-1.5 px-3 py-2.5 text-xs font-medium transition-colors"
               style={
                 activeTab === "physics"
                   ? { borderBottom: `2px solid ${ACCENT}`, color: ACCENT }
-                  : { color: TEXT_SECONDARY }
+                  : { color: TEXT_SECONDARY, borderBottom: "2px solid transparent" }
               }
             >
               <Settings2 className="h-3 w-3" />
@@ -421,7 +413,7 @@ export function GraphControls({
           </div>
 
           {activeTab === "filter" && (
-            <div className="space-y-3 p-2.5">
+            <div className={`space-y-4 ${compact ? "p-3" : "p-4"}`}>
               <SliderRow
                 label="Minimum score"
                 value={minScore}
@@ -443,17 +435,11 @@ export function GraphControls({
               />
 
               {nodeTypes.length > 0 && (
-                <div>
-                  <label
-                    className="mb-1.5 block text-[11px] font-medium"
-                    style={{ color: TEXT_SECONDARY }}
-                  >
-                    Node type
-                  </label>
+                <FieldRow label="Node type">
                   <select
                     value={selectedNodeType ?? ""}
                     onChange={(e) => onNodeTypeChange(e.target.value || null)}
-                    className="w-full rounded-md border px-2 py-1.5 text-xs outline-none"
+                    className="h-8 w-full rounded-md border px-2.5 text-[11px] outline-none"
                     style={{
                       background: ELEVATED,
                       borderColor: BORDER,
@@ -467,13 +453,13 @@ export function GraphControls({
                       </option>
                     ))}
                   </select>
-                </div>
+                </FieldRow>
               )}
             </div>
           )}
 
           {activeTab === "physics" && (
-            <div className="space-y-3 p-2.5">
+            <div className={`space-y-4 ${compact ? "p-3" : "p-4"}`}>
               <p className="text-[10px] leading-relaxed" style={{ color: TEXT_MUTED }}>
                 Tune the force-simulation to prevent node overlap and control spacing.
               </p>
@@ -495,7 +481,9 @@ export function GraphControls({
                 max={300}
                 step={5}
                 displayValue={`${physicsConfig.linkDistance}px`}
-                onChange={(v) => onPhysicsChange({ ...physicsConfig, linkDistance: v })}
+                onChange={(v) =>
+                  onPhysicsChange({ ...physicsConfig, linkDistance: v })
+                }
               />
 
               <SliderRow
@@ -512,7 +500,7 @@ export function GraphControls({
                 <button
                   type="button"
                   onClick={() => onPhysicsChange(DEFAULT_PHYSICS)}
-                  className="flex w-full items-center justify-center gap-1.5 rounded-md border px-3 py-1.5 text-xs transition-colors"
+                  className="flex w-full items-center justify-center gap-1.5 rounded-md border px-3 py-2 text-xs transition-colors"
                   style={{
                     borderColor: BORDER,
                     color: TEXT_MUTED,
@@ -525,7 +513,7 @@ export function GraphControls({
               )}
 
               <div
-                className="rounded-md p-2 text-[10px] leading-relaxed"
+                className="rounded-md p-2.5 text-[10px] leading-relaxed"
                 style={{ background: ELEVATED, color: TEXT_MUTED }}
               >
                 <span style={{ color: TEXT_PRIMARY, fontWeight: 500 }}>Tips:</span>{" "}

@@ -359,7 +359,10 @@ export function KnowledgeGraph({
     useKnowledgeGraph(userId, demoMode);
 
   const graphRef = useRef<ForceGraphRef | undefined>(undefined);
+  /** Outer shell (chrome + canvas). */
   const containerRef = useRef<HTMLDivElement>(null);
+  /** Canvas stage only — ResizeObserver / ForceGraph size from this, not chrome. */
+  const canvasRef = useRef<HTMLDivElement>(null);
   const previousNodeIdsRef = useRef<Set<string>>(new Set());
   const hasAutoFittedRef = useRef(false);
   const physicsConfigRef = useRef<PhysicsConfig>(DEFAULT_PHYSICS);
@@ -455,7 +458,7 @@ export function KnowledgeGraph({
       nodeOffset.set(n.id, { angle, radius });
     }
 
-    const el = containerRef.current;
+    const el = canvasRef.current;
     const minDim = Math.min(
       el?.clientWidth ?? dimensions.width,
       el?.clientHeight ?? dimensions.height,
@@ -515,7 +518,7 @@ export function KnowledgeGraph({
    *   - Sidebar graph overflowing / underflowing
    */
   useEffect(() => {
-    const el = containerRef.current;
+    const el = canvasRef.current;
     if (!el) return;
 
     const observer = new ResizeObserver((entries) => {
@@ -1127,29 +1130,38 @@ export function KnowledgeGraph({
   /* Compact = sidebar (~220–320px) or unknown size. Expanded overlay ≥420px. */
   const isCompact = dimensions.width < 420;
 
+  // #region agent log
+  useEffect(() => {
+    fetch('http://127.0.0.1:7869/ingest/5cb58a1c-2cd9-4ab6-a17f-65665f87f1e5',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'a1c933'},body:JSON.stringify({sessionId:'a1c933',runId:'post-fix',hypothesisId:'D',location:'KnowledgeGraph.tsx:layout',message:'docked layout metrics',data:{width:dimensions.width,height:dimensions.height,isCompact,summaryLen:summary?.length??0,nodeCount:nodes.length,filteredCount:filteredNodes.length,graphKindTab,hasGraphRef:!!graphRef.current,layout:'docked'},timestamp:Date.now()})}).catch(()=>{});
+  }, [dimensions.width, dimensions.height, isCompact, summary, nodes.length, filteredNodes.length, graphKindTab]);
+  // #endregion
+
   /* ── Render ───────────────────────────────────────────── */
+  /* Layout: docked chrome (top) | canvas (middle) | summary (bottom).
+     Controls never float over ForceGraph — no z-index / pointer-events war. */
 
   return (
     <div
       ref={containerRef}
-      className={`relative h-full w-full overflow-hidden ${className}`}
+      className={`flex h-full w-full min-h-0 flex-col overflow-hidden ${className}`}
       style={{ background: BG_WHITE, minHeight: 120 }}
     >
-      {/* Header sits above the canvas (z-30). pointer-events only on children
-          so pan/zoom still work on the graph around the controls. */}
+      {/* ── Top chrome: tabs + toolbar (outside canvas) ── */}
       <div
-        className={`pointer-events-none absolute inset-x-0 top-0 z-30 flex flex-col items-stretch ${
-          isCompact ? "gap-1 px-1.5 pt-1.5" : "gap-2 px-3 pt-2"
-        }`}
+        className="flex shrink-0 flex-col px-3 pb-4 pt-3"
+        style={{
+          gap: 24,
+          borderBottom: "1px solid rgba(0, 0, 0, 0.06)",
+          background: "var(--aria-surface-raised, #FFFFFF)",
+        }}
       >
-        <div className="pointer-events-auto w-full min-w-0">
+        {/* Row 1: Explore / Prefs / Both */}
+        <div className="w-full min-w-0 pb-0.5">
           <div
-            className="flex w-full min-w-0 items-stretch gap-0.5 rounded-full border p-0.5"
+            className="flex w-full min-w-0 items-stretch gap-1 rounded-full border p-1"
             style={{
-              background: "rgba(255, 255, 255, 0.95)",
-              border: "1px solid rgba(0, 0, 0, 0.06)",
-              backdropFilter: "blur(12px)",
-              boxShadow: "0 2px 8px rgba(0, 0, 0, 0.05)",
+              background: "var(--aria-surface-inset, #F4F3F0)",
+              borderColor: "rgba(0, 0, 0, 0.06)",
             }}
             role="tablist"
             aria-label="Graph view"
@@ -1168,15 +1180,17 @@ export function KnowledgeGraph({
                   type="button"
                   role="tab"
                   aria-selected={selected}
-                  onClick={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
+                  onClick={() => {
+                    // #region agent log
+                    fetch('http://127.0.0.1:7869/ingest/5cb58a1c-2cd9-4ab6-a17f-65665f87f1e5',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'a1c933'},body:JSON.stringify({sessionId:'a1c933',runId:'post-fix',hypothesisId:'A,C',location:'KnowledgeGraph.tsx:tabClick',message:'Explore/Prefs/Both tab clicked',data:{clicked:tab.key,prev:graphKindTab,isCompact,width:dimensions.width,totalNodes:nodes.length,filteredBefore:filteredNodes.length},timestamp:Date.now()})}).catch(()=>{});
+                    // #endregion
                     setGraphKindTab(tab.key);
                   }}
-                  onPointerDown={(e) => e.stopPropagation()}
-                  className={`min-w-0 flex-1 truncate rounded-full py-1.5 text-center font-medium transition-all ${
-                    isCompact ? "px-1 text-[10px] leading-tight" : "px-2.5 text-[11px]"
-                  }`}
+                  className={`min-h-9 min-w-0 flex-1 truncate rounded-full text-center font-medium transition-colors ${
+                    isCompact
+                      ? "px-2 py-2 text-[11px] leading-none"
+                      : "px-3 py-2 text-[12px] leading-none"
+                  } ${selected ? "" : "hover:bg-black/5"}`}
                   style={
                     selected
                       ? {
@@ -1195,7 +1209,8 @@ export function KnowledgeGraph({
           </div>
         </div>
 
-        <div className="pointer-events-auto w-full min-w-0">
+        {/* Row 2: Find nodes + Settings / Demo / zoom */}
+        <div className="w-full min-w-0 pt-0.5">
           <GraphControls
             compact={isCompact}
             searchQuery={searchQuery}
@@ -1204,9 +1219,24 @@ export function KnowledgeGraph({
             onMinScoreChange={(s) => setFilters({ ...filters, minScore: s })}
             minFrequency={filters.minFrequency ?? 1}
             onMinFrequencyChange={(f) => setFilters({ ...filters, minFrequency: f })}
-            onZoomIn={() => graphRef.current?.zoom(1.3, 300)}
-            onZoomOut={() => graphRef.current?.zoom(0.7, 300)}
-            onFitAll={() => graphRef.current?.zoomToFit(400, 40)}
+            onZoomIn={() => {
+              // #region agent log
+              fetch('http://127.0.0.1:7869/ingest/5cb58a1c-2cd9-4ab6-a17f-65665f87f1e5',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'a1c933'},body:JSON.stringify({sessionId:'a1c933',runId:'post-fix',hypothesisId:'B',location:'KnowledgeGraph.tsx:zoomIn',message:'zoom in clicked',data:{hasGraphRef:!!graphRef.current,isCompact},timestamp:Date.now()})}).catch(()=>{});
+              // #endregion
+              graphRef.current?.zoom(1.3, 300);
+            }}
+            onZoomOut={() => {
+              // #region agent log
+              fetch('http://127.0.0.1:7869/ingest/5cb58a1c-2cd9-4ab6-a17f-65665f87f1e5',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'a1c933'},body:JSON.stringify({sessionId:'a1c933',runId:'post-fix',hypothesisId:'B',location:'KnowledgeGraph.tsx:zoomOut',message:'zoom out clicked',data:{hasGraphRef:!!graphRef.current,isCompact},timestamp:Date.now()})}).catch(()=>{});
+              // #endregion
+              graphRef.current?.zoom(0.7, 300);
+            }}
+            onFitAll={() => {
+              // #region agent log
+              fetch('http://127.0.0.1:7869/ingest/5cb58a1c-2cd9-4ab6-a17f-65665f87f1e5',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'a1c933'},body:JSON.stringify({sessionId:'a1c933',runId:'post-fix',hypothesisId:'B',location:'KnowledgeGraph.tsx:fitAll',message:'fit all clicked',data:{hasGraphRef:!!graphRef.current,isCompact},timestamp:Date.now()})}).catch(()=>{});
+              // #endregion
+              graphRef.current?.zoomToFit(400, 40);
+            }}
             nodeTypes={nodeTypes}
             selectedNodeType={filters.nodeType ?? null}
             onNodeTypeChange={(t) => setFilters({ ...filters, nodeType: t ?? undefined })}
@@ -1214,38 +1244,43 @@ export function KnowledgeGraph({
             onPhysicsChange={setPhysicsConfig}
             isLoading={isLoading}
             demoMode={demoMode}
-            onDemoModeChange={onDemoModeChange}
+            onDemoModeChange={(enabled) => {
+              // #region agent log
+              fetch('http://127.0.0.1:7869/ingest/5cb58a1c-2cd9-4ab6-a17f-65665f87f1e5',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'a1c933'},body:JSON.stringify({sessionId:'a1c933',runId:'post-fix',hypothesisId:'A',location:'KnowledgeGraph.tsx:demoToggle',message:'demo toggle clicked',data:{enabled,hasHandler:!!onDemoModeChange,isCompact},timestamp:Date.now()})}).catch(()=>{});
+              // #endregion
+              onDemoModeChange?.(enabled);
+            }}
           />
         </div>
       </div>
 
-      <NodeDetail
-        node={selectedNode}
-        onClose={() => setSelectedNodeId(null)}
-        relatedNodes={relatedNodeLabels}
-      />
+      {/* ── Middle: interactive canvas only (nodes / pan / zoom untouched) ── */}
+      <div ref={canvasRef} className="relative min-h-0 flex-1 overflow-hidden">
+        <NodeDetail
+          node={selectedNode}
+          onClose={() => setSelectedNodeId(null)}
+          relatedNodes={relatedNodeLabels}
+        />
 
-      {filteredNodes.length === 0 && !isLoading && (
-        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-          <div className="text-center" style={{ color: "#9C9C9C" }}>
-            <p className="text-sm font-medium">
-              {graphKindTab === "preference"
-                ? "No preferences yet"
-                : graphKindTab === "exploration"
-                  ? "No exploration topics yet"
-                  : "No topics yet"}
-            </p>
-            <p className="mt-1.5 text-xs" style={{ color: "#C4C4C4" }}>
-              {graphKindTab === "preference"
-                ? "Rate answers in chat to grow preference nodes"
-                : "Start chatting to build your knowledge graph"}
-            </p>
+        {filteredNodes.length === 0 && !isLoading && (
+          <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center">
+            <div className="text-center" style={{ color: "#9C9C9C" }}>
+              <p className="text-sm font-medium">
+                {graphKindTab === "preference"
+                  ? "No preferences yet"
+                  : graphKindTab === "exploration"
+                    ? "No exploration topics yet"
+                    : "No topics yet"}
+              </p>
+              <p className="mt-1.5 text-xs" style={{ color: "#C4C4C4" }}>
+                {graphKindTab === "preference"
+                  ? "Rate answers in chat to grow preference nodes"
+                  : "Start chatting to build your knowledge graph"}
+              </p>
+            </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {/* Canvas stays under the header (z-0) so tab/toolbar clicks aren't stolen. */}
-      <div className="absolute inset-0 z-0">
         {dimensions.width > 0 && dimensions.height > 0 && (
           <Suspense
             fallback={
@@ -1293,24 +1328,26 @@ export function KnowledgeGraph({
         )}
       </div>
 
-      {summary && (
+      {/* ── Bottom: dedicated summary strip (never overlays controls) ── */}
+      {summary ? (
         <div
-          className={`pointer-events-none absolute z-10 rounded-xl leading-relaxed shadow-md ${
-            isCompact
-              ? "bottom-2 left-2 right-2 max-w-none px-2 py-1.5 text-[10px] line-clamp-2"
-              : "bottom-4 left-4 max-w-xs px-3 py-2 text-xs"
-          }`}
+          className={`shrink-0 ${isCompact ? "px-2.5 py-2" : "px-3 py-2.5"}`}
           style={{
-            background: "rgba(255, 255, 255, 0.92)",
-            border: "1px solid rgba(0, 0, 0, 0.06)",
+            borderTop: "1px solid rgba(0, 0, 0, 0.06)",
+            background: "var(--aria-surface-inset, #F4F3F0)",
             color: "#6B6B6B",
-            backdropFilter: "blur(12px)",
           }}
           title={summary}
         >
-          {summary}
+          <p
+            className={`m-0 leading-relaxed ${
+              isCompact ? "line-clamp-2 text-[10px]" : "line-clamp-2 text-xs"
+            }`}
+          >
+            {summary}
+          </p>
         </div>
-      )}
+      ) : null}
     </div>
   );
 }
