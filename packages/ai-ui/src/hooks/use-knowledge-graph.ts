@@ -105,14 +105,17 @@ function writeCache(userId: string, data: GraphData): void {
 const DEFAULT_DEMO_NODES: GraphNode[] = [
   {
     id: "demo:aria", label: "ARIA", nodeType: "system",
+    graphKind: "exploration",
     frequency: 10, avgScore: 0.88, lastSeen: NOW, color: "#22d3ee",
   },
   {
     id: "demo:memory", label: "Semantic Memory", nodeType: "feature",
+    graphKind: "exploration",
     frequency: 5, avgScore: 0.82, lastSeen: NOW,
   },
   {
     id: "demo:feedback", label: "Feedback Loop", nodeType: "feature",
+    graphKind: "exploration",
     frequency: 4, avgScore: 0.65, lastSeen: NOW,
   },
 ];
@@ -190,6 +193,7 @@ function makeNode(label: string, nodeType: string, freq: number, score: number):
     id: `demo:${slug}`,
     label,
     nodeType,
+    graphKind: nodeType === "preference" ? "preference" : "exploration",
     frequency: freq,
     avgScore: score,
     lastSeen: NOW,
@@ -383,6 +387,10 @@ export function useKnowledgeGraph(
       const result: GraphData = await response.json();
       if (result.nodes.length > 0) {
         setHasRealData(true);
+      } else {
+        // ponytail: empty DB genuinely has no real data — re-enable the demo
+        // so the panel never collapses to 0 nodes for a fresh/empty user.
+        setHasRealData(false);
       }
       setData(result);
       writeCache(userId, result);

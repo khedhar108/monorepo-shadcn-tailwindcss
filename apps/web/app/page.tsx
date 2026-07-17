@@ -50,12 +50,19 @@ function useGraphVersion() {
   return { version, refresh } as const;
 }
 
+function useHistoryVersion() {
+  const [version, setVersion] = useState(0);
+  const refresh = useCallback(() => setVersion((c) => c + 1), []);
+  return { version, refresh } as const;
+}
+
 /* ── Home Content ── */
 
 function HomeContent() {
   const [providers, setProviders] = useState<ProviderGroup[]>([]);
   const { setSelection } = useLlmSelection();
   const { version: graphVersion, refresh: refreshGraph } = useGraphVersion();
+  const { version: historyVersion, refresh: refreshHistory } = useHistoryVersion();
   const [currentThreadId, setCurrentThreadId] = useState<string | null>(null);
   const [mobileHistoryOpen, setMobileHistoryOpen] = useState(false);
   const [graphExpanded, setGraphExpanded] = useState(false);
@@ -139,11 +146,13 @@ function HomeContent() {
 
   const handleFeedbackSubmitted = useCallback(() => {
     refreshGraph();
-  }, [refreshGraph]);
+    refreshHistory();
+  }, [refreshGraph, refreshHistory]);
 
   const handleMessagesPersisted = useCallback(() => {
     refreshGraph();
-  }, [refreshGraph]);
+    refreshHistory();
+  }, [refreshGraph, refreshHistory]);
 
   return (
     <main
@@ -269,6 +278,7 @@ function HomeContent() {
             currentThreadId={currentThreadId}
             onNewChat={handleNewChat}
             onSelectThread={handleSelectThread}
+            refreshKey={historyVersion}
             className="aria-fade-in-up aria-stagger-1 h-full"
           />
         </aside>
@@ -307,6 +317,7 @@ function HomeContent() {
                   <ChatHistory
                     userId={GRAPH_USER_ID}
                     currentThreadId={currentThreadId}
+                    refreshKey={historyVersion}
                     onNewChat={() => {
                       closeMobileHistory();
                       handleNewChat();

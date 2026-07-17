@@ -353,8 +353,10 @@ export function KnowledgeGraph({
   onDemoModeChange,
 }: KnowledgeGraphProps) {
   const [graphKindTab, setGraphKindTab] = useState<GraphKindTab>("all");
+  /* Always fetch the full graph; Explore/Prefs/Both filter client-side so
+     tab switches are instant and don't race a network refetch. */
   const { nodes, edges, summary, isLoading, filters, setFilters } =
-    useKnowledgeGraph(userId, demoMode, graphKindTab);
+    useKnowledgeGraph(userId, demoMode);
 
   const graphRef = useRef<ForceGraphRef | undefined>(undefined);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -459,8 +461,10 @@ export function KnowledgeGraph({
       el?.clientHeight ?? dimensions.height,
     );
     /* Give clusters more room at scale: more sub-hubs / bigger clusters
-     * need a wider inner ring so they don't collide with each other. */
-    const innerRadius = Math.max(110, minDim * 0.3);
+     * need a wider inner ring so they don't collide with each other.
+     * ponytail: floor scales down for narrow viewports (<300px sidebar) so
+     * nodes don't spread to the edges and clip their labels. */
+    const innerRadius = Math.max(minDim < 300 ? 60 : 110, minDim * 0.28);
     const types = [...subHubByType.keys()];
     const subHubTargets = new Map<string, { x: number; y: number }>();
     types.forEach((t, i) => {
@@ -574,8 +578,23 @@ export function KnowledgeGraph({
     );
   }, [nodes, searchQuery]);
 
-  /* Show all nodes always — search only highlights */
-  const filteredNodes = nodes;
+  /* Filter by active tab client-side so Explore/Prefs/Both visibly change the
+     graph. System hubs stay visible on every tab. Missing graphKind is treated
+     as exploration (legacy/demo nodes). Search still only highlights. */
+  const filteredNodes = useMemo(() => {
+    if (graphKindTab === "all") return nodes;
+    return nodes.filter((n) => {
+      if (n.nodeType === "system") return true;
+      if (graphKindTab === "preference") {
+        return n.graphKind === "preference" || n.nodeType === "preference";
+      }
+      // exploration
+      return (
+        n.nodeType !== "preference" &&
+        (n.graphKind === "exploration" || n.graphKind == null)
+      );
+    });
+  }, [nodes, graphKindTab]);
 
   const filteredEdges = useMemo(() => {
     const idSet = new Set(filteredNodes.map((n) => n.id));
@@ -707,10 +726,16 @@ export function KnowledgeGraph({
 
   /* ── Auto-fit after simulation settles ────────────────── */
 
+  const dimensionsRef = useRef(dimensions);
+  dimensionsRef.current = dimensions;
+
   const handleEngineStop = useCallback(() => {
     if (hasAutoFittedRef.current) return;
     hasAutoFittedRef.current = true;
-    graphRef.current?.zoomToFit(500, 40);
+    // ponytail: smaller padding on narrow viewports so the graph fills more
+    // of the available space instead of being squeezed into the center.
+    const pad = dimensionsRef.current.width < 300 ? 16 : 40;
+    graphRef.current?.zoomToFit(500, pad);
   }, []);
 
   /* ── Re-fit when container resizes significantly ──────── */
@@ -724,8 +749,9 @@ export function KnowledgeGraph({
       Math.abs(dimensions.width - prev.width) > 80 ||
       Math.abs(dimensions.height - prev.height) > 80
     ) {
+      const pad = dimensions.width < 300 ? 16 : 40;
       const t = window.setTimeout(() => {
-        graphRef.current?.zoomToFit(400, 40);
+        graphRef.current?.zoomToFit(400, pad);
       }, 200);
       return () => window.clearTimeout(t);
     }
@@ -1098,6 +1124,9 @@ export function KnowledgeGraph({
     [filteredNodes, filteredEdges],
   );
 
+  /* Compact = sidebar (~220–320px) or unknown size. Expanded overlay ≥420px. */
+  const isCompact = dimensions.width < 420;
+
   /* ── Render ───────────────────────────────────────────── */
 
   return (
@@ -1106,64 +1135,89 @@ export function KnowledgeGraph({
       className={`relative h-full w-full overflow-hidden ${className}`}
       style={{ background: BG_WHITE, minHeight: 120 }}
     >
-      {/* ── Segmented control: Exploration | Preferences | Both ── */}
+      {/* Header sits above the canvas (z-30). pointer-events only on children
+          so pan/zoom still work on the graph around the controls. */}
       <div
-        className="absolute left-1/2 top-3 z-20 flex -translate-x-1/2 items-center gap-0.5 rounded-full border px-1 py-1"
-        style={{
-          background: "rgba(255, 255, 255, 0.92)",
-          border: "1px solid rgba(0, 0, 0, 0.06)",
-          backdropFilter: "blur(12px)",
-          boxShadow: "0 2px 8px rgba(0, 0, 0, 0.05)",
-        }}
-        role="tablist"
-        aria-label="Graph view"
+        className={`pointer-events-none absolute inset-x-0 top-0 z-30 flex flex-col items-stretch ${
+          isCompact ? "gap-1 px-1.5 pt-1.5" : "gap-2 px-3 pt-2"
+        }`}
       >
-        {([
-          { key: "exploration", label: "Exploration" },
-          { key: "preference", label: "Preferences" },
-          { key: "all", label: "Both" },
-        ] as const).map((tab) => (
-          <button
-            key={tab.key}
-            role="tab"
-            aria-selected={graphKindTab === tab.key}
-            onClick={() => setGraphKindTab(tab.key)}
-            className="rounded-full px-3 py-1 text-[11px] font-medium transition-all"
-            style={
-              graphKindTab === tab.key
-                ? {
-                    background: "var(--aria-accent, #0D9488)",
-                    color: "#FFFFFF",
-                  }
-                : {
-                    color: "var(--aria-text-secondary, #6B6B6B)",
-                  }
-            }
+        <div className="pointer-events-auto w-full min-w-0">
+          <div
+            className="flex w-full min-w-0 items-stretch gap-0.5 rounded-full border p-0.5"
+            style={{
+              background: "rgba(255, 255, 255, 0.95)",
+              border: "1px solid rgba(0, 0, 0, 0.06)",
+              backdropFilter: "blur(12px)",
+              boxShadow: "0 2px 8px rgba(0, 0, 0, 0.05)",
+            }}
+            role="tablist"
+            aria-label="Graph view"
           >
-            {tab.label}
-          </button>
-        ))}
-      </div>
+            {(
+              [
+                { key: "exploration", label: "Explore", short: "Explore" },
+                { key: "preference", label: "Prefs", short: "Prefs" },
+                { key: "all", label: "Both", short: "Both" },
+              ] as const
+            ).map((tab) => {
+              const selected = graphKindTab === tab.key;
+              return (
+                <button
+                  key={tab.key}
+                  type="button"
+                  role="tab"
+                  aria-selected={selected}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setGraphKindTab(tab.key);
+                  }}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  className={`min-w-0 flex-1 truncate rounded-full py-1.5 text-center font-medium transition-all ${
+                    isCompact ? "px-1 text-[10px] leading-tight" : "px-2.5 text-[11px]"
+                  }`}
+                  style={
+                    selected
+                      ? {
+                          background: "var(--aria-accent, #0D9488)",
+                          color: "#FFFFFF",
+                        }
+                      : {
+                          color: "var(--aria-text-secondary, #6B6B6B)",
+                        }
+                  }
+                >
+                  {isCompact ? tab.short : tab.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
 
-      <GraphControls
-        searchQuery={searchQuery}
-        onSearchChange={setSearchQuery}
-        minScore={filters.minScore ?? 0}
-        onMinScoreChange={(s) => setFilters({ ...filters, minScore: s })}
-        minFrequency={filters.minFrequency ?? 1}
-        onMinFrequencyChange={(f) => setFilters({ ...filters, minFrequency: f })}
-        onZoomIn={() => graphRef.current?.zoom(1.3, 300)}
-        onZoomOut={() => graphRef.current?.zoom(0.7, 300)}
-        onFitAll={() => graphRef.current?.zoomToFit(400, 40)}
-        nodeTypes={nodeTypes}
-        selectedNodeType={filters.nodeType ?? null}
-        onNodeTypeChange={(t) => setFilters({ ...filters, nodeType: t ?? undefined })}
-        physicsConfig={physicsConfig}
-        onPhysicsChange={setPhysicsConfig}
-        isLoading={isLoading}
-        demoMode={demoMode}
-        onDemoModeChange={onDemoModeChange}
-      />
+        <div className="pointer-events-auto w-full min-w-0">
+          <GraphControls
+            compact={isCompact}
+            searchQuery={searchQuery}
+            onSearchChange={setSearchQuery}
+            minScore={filters.minScore ?? 0}
+            onMinScoreChange={(s) => setFilters({ ...filters, minScore: s })}
+            minFrequency={filters.minFrequency ?? 1}
+            onMinFrequencyChange={(f) => setFilters({ ...filters, minFrequency: f })}
+            onZoomIn={() => graphRef.current?.zoom(1.3, 300)}
+            onZoomOut={() => graphRef.current?.zoom(0.7, 300)}
+            onFitAll={() => graphRef.current?.zoomToFit(400, 40)}
+            nodeTypes={nodeTypes}
+            selectedNodeType={filters.nodeType ?? null}
+            onNodeTypeChange={(t) => setFilters({ ...filters, nodeType: t ?? undefined })}
+            physicsConfig={physicsConfig}
+            onPhysicsChange={setPhysicsConfig}
+            isLoading={isLoading}
+            demoMode={demoMode}
+            onDemoModeChange={onDemoModeChange}
+          />
+        </div>
+      </div>
 
       <NodeDetail
         node={selectedNode}
@@ -1174,69 +1228,85 @@ export function KnowledgeGraph({
       {filteredNodes.length === 0 && !isLoading && (
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
           <div className="text-center" style={{ color: "#9C9C9C" }}>
-            <p className="text-sm font-medium">No topics yet</p>
+            <p className="text-sm font-medium">
+              {graphKindTab === "preference"
+                ? "No preferences yet"
+                : graphKindTab === "exploration"
+                  ? "No exploration topics yet"
+                  : "No topics yet"}
+            </p>
             <p className="mt-1.5 text-xs" style={{ color: "#C4C4C4" }}>
-              Start chatting to build your knowledge graph
+              {graphKindTab === "preference"
+                ? "Rate answers in chat to grow preference nodes"
+                : "Start chatting to build your knowledge graph"}
             </p>
           </div>
         </div>
       )}
 
-      {dimensions.width > 0 && dimensions.height > 0 && (
-        <Suspense
-          fallback={
-            <div className="absolute inset-0 flex items-center justify-center">
-              <div className="flex items-center gap-2 text-sm" style={{ color: "#9C9C9C" }}>
-                <div className="h-4 w-4 animate-spin rounded-full border-2 border-[#0D9488] border-t-transparent" />
-                Loading graph...
+      {/* Canvas stays under the header (z-0) so tab/toolbar clicks aren't stolen. */}
+      <div className="absolute inset-0 z-0">
+        {dimensions.width > 0 && dimensions.height > 0 && (
+          <Suspense
+            fallback={
+              <div className="absolute inset-0 flex items-center justify-center">
+                <div className="flex items-center gap-2 text-sm" style={{ color: "#9C9C9C" }}>
+                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-[#0D9488] border-t-transparent" />
+                  Loading graph...
+                </div>
               </div>
-            </div>
-          }
-        >
-          <ForceGraph2D<GraphNode, GraphEdge>
-            ref={graphRef}
-            graphData={fgData}
-            width={dimensions.width}
-            height={dimensions.height}
-            nodeRelSize={3}
-            nodeVal="val"
-            nodeLabel=""
-            nodeColor={nodeColor}
-            nodeCanvasObjectMode={() => "replace"}
-            nodeCanvasObject={nodeCanvasObject}
-            nodePointerAreaPaint={nodePointerAreaPaint}
-            linkCanvasObjectMode={() => "replace"}
-            linkCanvasObject={linkCanvasObject}
-            linkCurvature={0.15}
-            autoPauseRedraw={false}
-            onNodeClick={handleNodeClick}
-            onNodeHover={handleNodeHover}
-            onNodeDrag={handleNodeDrag}
-            onNodeDragEnd={handleNodeDragEnd}
-            onBackgroundClick={handleBackgroundClick}
-            onEngineStop={handleEngineStop}
-            onRenderFramePre={onRenderFramePre}
-            warmupTicks={120}
-            cooldownTicks={200}
-            d3AlphaDecay={0.028}
-            d3VelocityDecay={0.4}
-            enableZoomInteraction
-            enablePanInteraction
-            enableNodeDrag
-            backgroundColor={BG_WHITE}
-          />
-        </Suspense>
-      )}
+            }
+          >
+            <ForceGraph2D<GraphNode, GraphEdge>
+              ref={graphRef}
+              graphData={fgData}
+              width={dimensions.width}
+              height={dimensions.height}
+              nodeRelSize={3}
+              nodeVal="val"
+              nodeLabel=""
+              nodeColor={nodeColor}
+              nodeCanvasObjectMode={() => "replace"}
+              nodeCanvasObject={nodeCanvasObject}
+              nodePointerAreaPaint={nodePointerAreaPaint}
+              linkCanvasObjectMode={() => "replace"}
+              linkCanvasObject={linkCanvasObject}
+              linkCurvature={0.15}
+              autoPauseRedraw={false}
+              onNodeClick={handleNodeClick}
+              onNodeHover={handleNodeHover}
+              onNodeDrag={handleNodeDrag}
+              onNodeDragEnd={handleNodeDragEnd}
+              onBackgroundClick={handleBackgroundClick}
+              onEngineStop={handleEngineStop}
+              onRenderFramePre={onRenderFramePre}
+              warmupTicks={120}
+              cooldownTicks={200}
+              d3AlphaDecay={0.028}
+              d3VelocityDecay={0.4}
+              enableZoomInteraction
+              enablePanInteraction
+              enableNodeDrag
+              backgroundColor={BG_WHITE}
+            />
+          </Suspense>
+        )}
+      </div>
 
       {summary && (
         <div
-          className="absolute bottom-4 left-4 max-w-xs rounded-xl px-3 py-2 text-xs leading-relaxed shadow-md"
+          className={`pointer-events-none absolute z-10 rounded-xl leading-relaxed shadow-md ${
+            isCompact
+              ? "bottom-2 left-2 right-2 max-w-none px-2 py-1.5 text-[10px] line-clamp-2"
+              : "bottom-4 left-4 max-w-xs px-3 py-2 text-xs"
+          }`}
           style={{
             background: "rgba(255, 255, 255, 0.92)",
             border: "1px solid rgba(0, 0, 0, 0.06)",
             color: "#6B6B6B",
             backdropFilter: "blur(12px)",
           }}
+          title={summary}
         >
           {summary}
         </div>

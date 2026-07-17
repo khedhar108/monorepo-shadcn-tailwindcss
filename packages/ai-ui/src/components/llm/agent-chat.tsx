@@ -1,12 +1,7 @@
 "use client";
 
 import { useChat } from "@ai-sdk/react";
-import {
-  DefaultChatTransport,
-  type DynamicToolUIPart,
-  type ReasoningUIPart,
-  type UIMessage,
-} from "ai";
+import { DefaultChatTransport, type UIMessage } from "ai";
 import {
   Card,
   CardContent,
@@ -28,7 +23,6 @@ import { cn } from "@repo/ui/lib/utils";
 import {
   Brain,
   ChevronDown,
-  Circle,
   Sparkles,
   User,
   Wrench,
@@ -44,35 +38,20 @@ import {
 import {
   Message,
   MessageContent,
-  MessageResponse,
 } from "../ai-elements/message";
 import {
   PromptInput,
   PromptInputBody,
-  PromptInputButton,
   PromptInputFooter,
   PromptInputSubmit,
   PromptInputTextarea,
   PromptInputTools,
 } from "../ai-elements/prompt-input";
 import { Suggestion, Suggestions } from "../ai-elements/suggestion";
-import {
-  ChainOfThought,
-  ChainOfThoughtContent,
-  ChainOfThoughtHeader,
-  ChainOfThoughtStep,
-} from "../ai-elements/chain-of-thought";
-import {
-  Tool,
-  ToolContent,
-  ToolHeader,
-  ToolInput,
-  ToolOutput,
-  type ToolPart,
-} from "../ai-elements/tool";
-import { Shimmer } from "../ai-elements/shimmer";
 import { useChatThread } from "../../hooks/use-chat-thread";
 import { FeedbackBar, type FeedbackPayload, type FeedbackResult } from "../chat/FeedbackBar";
+import { AssistantMessageParts } from "../chat/assistant-message-parts";
+import { formatRelativeTime } from "../../lib/format-relative-time";
 import { useLlmSelection } from "./llm-selection-context";
 
 export type AgentChatProps = {
@@ -92,6 +71,8 @@ export type AgentChatProps = {
   threadId?: string | null;
   onFeedbackSubmitted?: (payload: FeedbackPayload) => void;
   onMessagesPersisted?: () => void;
+  /** Dev-only footer with thread/agent ids. Hidden by default. */
+  showSessionFooter?: boolean;
 };
 
 type StoredMessageData = {
@@ -102,283 +83,84 @@ type StoredMessageData = {
 };
 
 function storedMessageToUIMessage(msg: StoredMessageData): UIMessage {
+  const text = msg.content?.trim() ?? "";
   return {
     id: msg.id,
     role: msg.role,
-    parts: [{ type: "text" as const, text: msg.content }],
+    parts: text ? [{ type: "text" as const, text }] : [],
     createdAt: msg.createdAt ? new Date(msg.createdAt) : undefined,
     content: msg.content,
   } as UIMessage;
 }
 
-function getMessageText(message: UIMessage): string {
-  return message.parts
+// ponytail: thin user-text extractor for non-assistant messages (no accordion).
+function getUserMessageText(message: UIMessage): string {
+  const fromParts = message.parts
     .filter((p) => p.type === "text")
     .map((p) => (p as { text: string }).text)
     .join("");
+  if (fromParts.trim()) return fromParts;
+  const legacy = (message as { content?: string }).content;
+  return typeof legacy === "string" ? legacy : "";
 }
 
-function isToolPart(part: UIMessage["parts"][number]): part is ToolPart {
-  return part.type === "dynamic-tool" || part.type.startsWith("tool-");
-}
+// 40px avatar — circular monogram/icon, soft inset highlight, quiet shadow.
+// Top offset clears the role+timestamp row so the chip lines up with the bubble.
+function AvatarChip({ role }: { role: UIMessage["role"] }) {
+  const isUser = role === "user";
 
-function isDynamicToolPart(part: ToolPart): part is DynamicToolUIPart {
-  return part.type === "dynamic-tool";
-}
-
-const toolLabelMap: Record<string, string> = {
-  topicExtractorTool: "Topic extraction",
-  graphQueryTool: "Knowledge graph",
-  listThreadsTool: "Thread history",
-  getAvailableProvidersTool: "Model providers",
-  feedbackRecorderTool: "Feedback",
-  "topic-extractor": "Topic extraction",
-  "graph-query": "Knowledge graph",
-  "list-threads": "Thread history",
-  "get-available-providers": "Model providers",
-  "feedback-recorder": "Feedback",
-};
-
-function prettifyToolName(name: string): string {
-  return toolLabelMap[name] ?? name;
-}
-
-function AgentToolPart({ part }: { part: ToolPart }) {
   return (
-    <Tool defaultOpen={false}>
-      {isDynamicToolPart(part) ? (
-        <ToolHeader state={part.state} toolName={part.toolName} type={part.type} />
-      ) : (
-        <ToolHeader state={part.state} type={part.type} />
+    <div
+      aria-hidden
+      className={cn(
+        "relative flex size-8 shrink-0 items-center justify-center self-start",
+        "mt-[1.375rem]",
+        "transition-transform duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]",
+        "hover:scale-[1.04] active:scale-[0.98]",
       )}
-      <ToolContent>
-        <ToolInput input={part.input} />
-        <ToolOutput errorText={part.errorText} output={part.output} />
-      </ToolContent>
-    </Tool>
-  );
-}
-
-// ponytail: group consecutive reasoning + tool parts into one ChainOfThought accordion (Manus/Kimi style)
-function groupParts(
-  parts: UIMessage["parts"],
-): Array<
-  | { kind: "text"; part: UIMessage["parts"][number]; index: number }
-  | { kind: "steps"; parts: Array<{ part: UIMessage["parts"][number]; index: number }> }
-> {
-  const groups: Array<
-    | { kind: "text"; part: UIMessage["parts"][number]; index: number }
-    | { kind: "steps"; parts: Array<{ part: UIMessage["parts"][number]; index: number }> }
-  > = [];
-
-  let currentSteps: Array<{ part: UIMessage["parts"][number]; index: number }> = [];
-
-  parts.forEach((part, index) => {
-    const isStep = part.type === "reasoning" || isToolPart(part);
-    const isText = part.type === "text";
-
-    if (isStep) {
-      currentSteps.push({ part, index });
-    } else if (isText) {
-      if (currentSteps.length > 0) {
-        groups.push({ kind: "steps", parts: currentSteps });
-        currentSteps = [];
-      }
-      groups.push({ kind: "text", part, index });
-    } else {
-      if (currentSteps.length > 0) {
-        groups.push({ kind: "steps", parts: currentSteps });
-        currentSteps = [];
-      }
-      groups.push({ kind: "text", part, index });
-    }
-  });
-
-  if (currentSteps.length > 0) {
-    groups.push({ kind: "steps", parts: currentSteps });
-  }
-
-  return groups;
-}
-
-function StepGroup({
-  steps,
-  isStreamingThisMessage,
-  messageId,
-}: {
-  steps: Array<{ part: UIMessage["parts"][number]; index: number }>;
-  isStreamingThisMessage: boolean;
-  messageId: string;
-}) {
-  const hasActiveStep = steps.some(
-    (s) =>
-      (s.part.type === "reasoning" && (s.part as ReasoningUIPart).state === "streaming") ||
-      (isToolPart(s.part) && (s.part as ToolPart).state === "input-available"),
-  );
-
-  const completedCount = steps.filter((s) => {
-    if (s.part.type === "reasoning") {
-      return (s.part as ReasoningUIPart).state !== "streaming";
-    }
-    if (isToolPart(s.part)) {
-      return (s.part as ToolPart).state === "output-available";
-    }
-    return false;
-  }).length;
-
-  const headerLabel = isStreamingThisMessage
-    ? hasActiveStep
-      ? "Thinking…"
-      : "Thought process"
-    : `Thought for ${steps.length} step${steps.length > 1 ? "s" : ""}`;
-
-  return (
-    <ChainOfThought defaultOpen={isStreamingThisMessage}>
-      <ChainOfThoughtHeader>
-        {isStreamingThisMessage && hasActiveStep ? (
-          <Shimmer className="text-xs font-medium">{headerLabel}</Shimmer>
+    >
+      <div
+        className="relative flex size-full items-center justify-center rounded-full text-white"
+        style={{
+          background: isUser
+            ? "linear-gradient(145deg, #FB7185 0%, #E11D48 55%, #9F1239 100%)"
+            : "linear-gradient(145deg, #5EEAD4 0%, #14B8A6 48%, #0F766E 100%)",
+          boxShadow: isUser
+            ? "0 2px 8px rgba(190,18,60,0.22), inset 0 1px 0 rgba(255,255,255,0.35)"
+            : "0 2px 8px rgba(13,148,136,0.28), inset 0 1px 0 rgba(255,255,255,0.35)",
+        }}
+      >
+        <span
+          className="pointer-events-none absolute inset-x-[5px] top-[3px] h-2 rounded-full opacity-50"
+          style={{
+            background:
+              "linear-gradient(180deg, rgba(255,255,255,0.65) 0%, transparent 100%)",
+          }}
+        />
+        {isUser ? (
+          <User className="relative size-3.5" strokeWidth={2} />
         ) : (
-          <span className="text-xs font-medium">{headerLabel}</span>
+          <span
+            className="relative select-none text-[13px] font-semibold leading-none tracking-tight"
+            style={{ fontFamily: "var(--font-display)" }}
+          >
+            A
+          </span>
         )}
-        {!isStreamingThisMessage && completedCount > 0 && (
-          <span className="ml-1 text-muted-foreground/60">· {completedCount} done</span>
-        )}
-      </ChainOfThoughtHeader>
-      <ChainOfThoughtContent>
-        {steps.map(({ part, index }) => {
-          const key = `${messageId}-step-${index}`;
-
-          if (part.type === "reasoning") {
-            const reasoningPart = part as ReasoningUIPart;
-            const isActive = reasoningPart.state === "streaming";
-            const text = reasoningPart.text || "";
-            const preview = text.length > 80 ? text.slice(0, 80) + "…" : text || "Reasoning…";
-
-            return (
-              <ChainOfThoughtStep
-                key={key}
-                icon={Brain}
-                label={
-                  <span className="font-medium">
-                    {isActive ? "Reasoning" : "Reasoned"}
-                  </span>
-                }
-                description={preview}
-                status={isActive ? "active" : "complete"}
-              >
-                {text && text.length > 80 && (
-                  <div className="rounded-md border border-neutral-200/60 bg-neutral-50/50 p-2 text-xs leading-relaxed text-muted-foreground dark:border-neutral-800/60 dark:bg-neutral-950/40">
-                    {text}
-                  </div>
-                )}
-              </ChainOfThoughtStep>
-            );
-          }
-
-          if (isToolPart(part)) {
-            const toolPart = part as ToolPart;
-            const isActive = toolPart.state === "input-available" || toolPart.state === "input-streaming";
-            const isComplete = toolPart.state === "output-available";
-            const toolName = isDynamicToolPart(toolPart)
-              ? prettifyToolName(toolPart.toolName)
-              : prettifyToolName(toolPart.type.split("-").slice(1).join("-"));
-
-            return (
-              <ChainOfThoughtStep
-                key={key}
-                icon={Wrench}
-                label={
-                  <span className="flex items-center gap-1.5 font-medium">
-                    {toolName}
-                    {isActive && (
-                      <Circle className="size-2 animate-pulse text-amber-500" />
-                    )}
-                  </span>
-                }
-                description={
-                  isActive
-                    ? "Running…"
-                    : isComplete
-                      ? "Completed"
-                      : toolPart.state === "output-error"
-                        ? "Error"
-                        : toolPart.state
-                }
-                status={isActive ? "active" : isComplete ? "complete" : "pending"}
-              >
-                <AgentToolPart part={toolPart} />
-              </ChainOfThoughtStep>
-            );
-          }
-
-          return null;
-        })}
-      </ChainOfThoughtContent>
-    </ChainOfThought>
+      </div>
+    </div>
   );
 }
 
-function MessageParts({
-  isAssistant,
-  isStreamingThisMessage,
-  message,
-}: {
-  isAssistant: boolean;
-  isStreamingThisMessage: boolean;
-  message: UIMessage;
-}) {
-  // ponytail: non-assistant messages get flat rendering (no accordion needed for user text)
-  if (!isAssistant) {
-    const textPart = message.parts.find((p) => p.type === "text") as { text?: string } | undefined;
-    if (!textPart?.text) return [];
-    return [
-      <span key={`${message.id}-text`} className="whitespace-pre-wrap break-words leading-relaxed">
-        {textPart.text}
-      </span>,
-    ];
-  }
-
-  // Assistant: group reasoning + tool parts into ChainOfThought accordions
-  const groups = groupParts(message.parts);
-  const rendered: React.ReactNode[] = [];
-
-  for (const group of groups) {
-    if (group.kind === "steps") {
-      rendered.push(
-        <StepGroup
-          key={`${message.id}-steps-${group.parts[0]?.index}`}
-          steps={group.parts}
-          isStreamingThisMessage={isStreamingThisMessage}
-          messageId={message.id}
-        />,
-      );
-    } else if (group.kind === "text") {
-      const part = group.part as { type: "text"; text: string };
-      if (!part.text) {
-        if (!isStreamingThisMessage) {
-          rendered.push(
-            <MessageResponse key={`${message.id}-text-${group.index}`} isAnimating={false}>
-              {"*(no response recorded)*"}
-            </MessageResponse>,
-          );
-        }
-        continue;
-      }
-      rendered.push(
-        <MessageResponse key={`${message.id}-text-${group.index}`} isAnimating={isStreamingThisMessage}>
-          {part.text}
-        </MessageResponse>,
-      );
-    }
-  }
-
-  if (rendered.length > 0) {
-    return rendered;
-  }
-
-  return isStreamingThisMessage ? (
-    <MessageResponse isAnimating={isStreamingThisMessage}>Thinking...</MessageResponse>
-  ) : null;
+function MessageTimestamp({ message }: { message: UIMessage }) {
+  const created = (message as { createdAt?: Date | string }).createdAt;
+  if (!created) return null;
+  const label = formatRelativeTime(created);
+  return (
+    <span className="text-[10px] uppercase tracking-wider text-neutral-400 dark:text-neutral-500">
+      {label}
+    </span>
+  );
 }
 
 type AgentChatInnerProps = AgentChatProps & {
@@ -397,6 +179,7 @@ function AgentChatInner({
   userId,
   onFeedbackSubmitted,
   onMessagesPersisted,
+  showSessionFooter = false,
 }: AgentChatInnerProps) {
   const { selection } = useLlmSelection();
   const memoryResource = userId ?? agentId;
@@ -418,7 +201,13 @@ function AgentChatInner({
           const data = (await response.json()) as { messages?: StoredMessageData[] };
           const msgs = data.messages ?? [];
           if (!cancelled && msgs.length > 0) {
-            const uiMessages = msgs.map(storedMessageToUIMessage);
+            const uiMessages = msgs
+              .filter(
+                (m) =>
+                  m.role !== "assistant" ||
+                  (m.content?.trim()?.length ?? 0) > 0,
+              )
+              .map(storedMessageToUIMessage);
             setHistoryMessages(uiMessages);
             uiMessages.forEach((m) => persistedMessageIdsRef.current.add(m.id));
           }
@@ -481,42 +270,56 @@ function AgentChatInner({
 
   const isBusy = status === "submitted" || status === "streaming";
   const lastMessage = messages.at(-1);
+  const prevStatusRef = useRef(status);
 
-  async function submitFeedback(payload: FeedbackPayload): Promise<FeedbackResult> {
-    const response = await fetch("/api/feedback", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        ...payload,
-        userId: memoryResource,
-      }),
-    });
-
-    if (!response.ok) {
-      const body = (await response.json().catch(() => null)) as
-        | { error?: string }
-        | null;
-      throw new Error(body?.error ?? "Failed to save feedback");
+  useEffect(() => {
+    const wasBusy =
+      prevStatusRef.current === "submitted" ||
+      prevStatusRef.current === "streaming";
+    if (wasBusy && status === "ready") {
+      onMessagesPersisted?.();
     }
+    prevStatusRef.current = status;
+  }, [status, onMessagesPersisted]);
 
-    const result = (await response.json().catch(() => null)) as
-      | {
-          preferenceLabel?: string | null;
-          graphUpdated?: boolean;
-          nodesUpdated?: number;
-        }
-      | null;
+  const submitFeedback = useCallback(
+    async (payload: FeedbackPayload): Promise<FeedbackResult> => {
+      const response = await fetch("/api/feedback", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          ...payload,
+          userId: memoryResource,
+        }),
+      });
 
-    onFeedbackSubmitted?.(payload);
+      if (!response.ok) {
+        const body = (await response.json().catch(() => null)) as
+          | { error?: string }
+          | null;
+        throw new Error(body?.error ?? "Failed to save feedback");
+      }
 
-    return {
-      preferenceLabel: result?.preferenceLabel ?? null,
-      graphUpdated: result?.graphUpdated ?? false,
-      nodesUpdated: result?.nodesUpdated ?? 0,
-    };
-  }
+      const result = (await response.json().catch(() => null)) as
+        | {
+            preferenceLabel?: string | null;
+            graphUpdated?: boolean;
+            nodesUpdated?: number;
+          }
+        | null;
+
+      onFeedbackSubmitted?.(payload);
+
+      return {
+        preferenceLabel: result?.preferenceLabel ?? null,
+        graphUpdated: result?.graphUpdated ?? false,
+        nodesUpdated: result?.nodesUpdated ?? 0,
+      };
+    },
+    [memoryResource, onFeedbackSubmitted],
+  );
 
   return (
     <Card
@@ -581,15 +384,11 @@ function AgentChatInner({
                   <div
                     key={message.id}
                     className={cn(
-                      "flex w-full min-w-0 gap-2.5",
+                      "flex w-full min-w-0 items-start gap-2.5",
                       isAssistant ? "justify-start" : "justify-end",
                     )}
                   >
-                    {isAssistant && (
-                      <div className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-lg bg-emerald-500 text-white dark:bg-emerald-600">
-                        <Sparkles className="size-3.5" />
-                      </div>
-                    )}
+                    {isAssistant ? <AvatarChip role={message.role} /> : null}
                     <div
                       className={cn(
                         "flex min-w-0 flex-col gap-1",
@@ -598,32 +397,42 @@ function AgentChatInner({
                           : "max-w-[80%] items-end",
                       )}
                     >
-                      <span className="px-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground/70">
-                        {isAssistant ? "ARIA" : "You"}
-                      </span>
+                      <div className="flex items-center gap-1.5 px-1">
+                        <span
+                          className="text-[10px] font-semibold uppercase tracking-[0.18em] text-neutral-500 dark:text-neutral-400"
+                          style={{ fontFamily: "var(--font-display)" }}
+                        >
+                          {isAssistant ? "ARIA" : "You"}
+                        </span>
+                        <MessageTimestamp message={message} />
+                      </div>
                       <Message from={message.role}>
                         <MessageContent>
-                          <MessageParts
-                            isAssistant={isAssistant}
-                            isStreamingThisMessage={isStreamingThisMessage}
-                            message={message}
-                          />
-                          {isAssistant && !isStreamingThisMessage ? (
-                            <FeedbackBar
-                              messageId={message.id}
-                              threadId={threadId}
-                              disabled={isBusy}
-                              onSubmit={submitFeedback}
+                          {isAssistant ? (
+                            <AssistantMessageParts
+                              message={message}
+                              isStreaming={isStreamingThisMessage}
                             />
-                          ) : null}
+                          ) : (
+                            <span className="whitespace-pre-wrap break-words leading-relaxed">
+                              {getUserMessageText(message).trim() || "\u200b"}
+                            </span>
+                          )}
                         </MessageContent>
                       </Message>
+                      {/* ponytail: FeedbackBar is a sibling of MessageContent, not a
+                          child — MessageContent has overflow-hidden for markdown,
+                          which clips the Submit button. Sibling renders in full. */}
+                      {isAssistant && !isStreamingThisMessage ? (
+                        <FeedbackBar
+                          messageId={message.id}
+                          threadId={threadId}
+                          disabled={isBusy}
+                          onSubmit={submitFeedback}
+                        />
+                      ) : null}
                     </div>
-                    {!isAssistant && (
-                      <div className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-lg bg-rose-400 text-white dark:bg-rose-600">
-                        <User className="size-3.5" />
-                      </div>
-                    )}
+                    {!isAssistant ? <AvatarChip role={message.role} /> : null}
                   </div>
                 );
               })
@@ -639,7 +448,7 @@ function AgentChatInner({
         ) : null}
 
         <PromptInput
-          className="rounded-2xl border border-neutral-200/80 bg-white shadow-sm transition-all focus-within:border-neutral-300 focus-within:shadow-md dark:border-neutral-800 dark:bg-neutral-950 dark:focus-within:border-neutral-700"
+          className="rounded-2xl border border-neutral-200/80 bg-white shadow-sm transition-all focus-within:border-neutral-300 focus-within:shadow-md focus-within:ring-2 focus-within:ring-neutral-900/5 dark:border-neutral-800 dark:bg-neutral-950 dark:focus-within:border-neutral-700 dark:focus-within:ring-white/5"
           onSubmit={({ text }) => {
             const trimmed = text.trim();
             if (!trimmed || isBusy) {
@@ -707,11 +516,13 @@ function AgentChatInner({
         </PromptInput>
       </CardContent>
 
-      <CardFooter className="border-t border-neutral-100 pt-4 text-xs text-neutral-500 dark:border-neutral-800 dark:text-neutral-400">
-        Memory thread <code className="mx-1">{threadId.slice(0, 8)}</code> · agent{" "}
-        <code className="mx-1">{agentId}</code> · graph{" "}
-        <code className="mx-1">{memoryResource}</code>
-      </CardFooter>
+      {showSessionFooter ? (
+        <CardFooter className="border-t border-neutral-100 pt-4 text-xs text-neutral-500 dark:border-neutral-800 dark:text-neutral-400">
+          Memory thread <code className="mx-1">{threadId.slice(0, 8)}</code> · agent{" "}
+          <code className="mx-1">{agentId}</code> · graph{" "}
+          <code className="mx-1">{memoryResource}</code>
+        </CardFooter>
+      ) : null}
     </Card>
   );
 }

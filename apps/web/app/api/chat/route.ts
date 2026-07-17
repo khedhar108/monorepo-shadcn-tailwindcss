@@ -22,6 +22,7 @@ import {
   getThreadMessages,
   type StoredMessage,
 } from "../../../lib/chat-history-store";
+import { sanitizeAssistantText } from "@repo/ai-ui/lib/message-sanitizer";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -88,6 +89,10 @@ export async function POST(req: Request) {
           `msg-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
         const assistantMessageId = `${threadId}:${Date.now()}`;
 
+        // ponytail: belt-and-suspenders — mastra-client already sanitizes before
+        // calling onFinish; re-applying here is idempotent and covers any other
+        // stream producer. History stores final answer text only.
+        const trimmedAssistant = sanitizeAssistantText(assistantText).trim();
         const msgs: StoredMessage[] = [
           {
             id: userMessageId,
@@ -96,13 +101,17 @@ export async function POST(req: Request) {
               typeof lastUser?.content === "string" ? lastUser.content : "",
             createdAt: new Date().toISOString(),
           },
-          {
+        ];
+
+        // ponytail: history stores final answer text only — no tool/reasoning parts
+        if (trimmedAssistant) {
+          msgs.push({
             id: assistantMessageId,
             role: "assistant",
-            content: assistantText,
+            content: trimmedAssistant,
             createdAt: new Date().toISOString(),
-          },
-        ];
+          });
+        }
 
         await appendHistoryEntry({
           threadId,
@@ -119,7 +128,7 @@ export async function POST(req: Request) {
           messages: [],
           lastQuery:
             typeof lastUser?.content === "string" ? lastUser.content : "",
-          lastResult: assistantText,
+          lastResult: trimmedAssistant,
         });
 
         await appendMessages(threadId, msgs, userId);
@@ -128,7 +137,9 @@ export async function POST(req: Request) {
         try {
           const stored = await getThreadMessages(threadId);
           const storedIds = new Set(stored.map((m) => m.id));
-          if (!storedIds.has(userMessageId) || !storedIds.has(assistantMessageId)) {
+          const assistantPersisted =
+            !trimmedAssistant || storedIds.has(assistantMessageId);
+          if (!storedIds.has(userMessageId) || !assistantPersisted) {
             console.error(
               `[chat] verifyThreadPersisted: messages missing after save for thread ${threadId}`,
             );
@@ -150,7 +161,7 @@ export async function POST(req: Request) {
               threadId,
               messageId: assistantMessageId,
               userMessage: userContent,
-              assistantMessage: assistantText,
+              assistantMessage: trimmedAssistant,
             });
           } catch {
             // Non-critical — graph just doesn't grow this turn

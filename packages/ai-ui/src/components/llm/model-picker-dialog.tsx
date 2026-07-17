@@ -1,7 +1,6 @@
 "use client";
 
-import { Badge } from "@repo/ui/components/badge";
-import { Check } from "lucide-react";
+import { AlertTriangle, Check } from "lucide-react";
 import type { ProviderGroup } from "../../lib/types";
 import {
   ModelSelectorContent,
@@ -42,6 +41,7 @@ export function ModelPickerDialog({
     provider: ProviderGroup,
     model: ProviderGroup["models"][number],
   ) {
+    if (!provider.connected) return;
     setSelection({
       provider: provider.provider,
       model: model.id,
@@ -71,14 +71,19 @@ export function ModelPickerDialog({
         {sortedProviders.map((provider, index) => (
           <div key={provider.provider}>
             {index > 0 ? <ModelSelectorSeparator /> : null}
-            <ModelSelectorGroup heading={provider.displayName}>
-              <div className="flex items-center gap-2 px-2 pb-1">
-                {provider.connected ? (
-                  <Badge variant="secondary">Connected</Badge>
-                ) : (
-                  <Badge variant="outline">No API key</Badge>
-                )}
-              </div>
+            <ModelSelectorGroup
+              heading={
+                <span className="inline-flex items-center gap-1.5">
+                  {provider.displayName}
+                  {!provider.connected ? (
+                    <AlertTriangle
+                      className="size-3.5 shrink-0 text-amber-600"
+                      aria-label="No API key configured"
+                    />
+                  ) : null}
+                </span>
+              }
+            >
               {provider.models.map((model) => {
                 const isSelected =
                   selection?.provider === provider.provider &&
@@ -88,7 +93,16 @@ export function ModelPickerDialog({
                   <ModelSelectorItem
                     key={model.id}
                     value={`${provider.provider}-${model.id}`}
+                    disabled={!provider.connected}
                     onSelect={() => handleSelect(provider, model)}
+                    className={
+                      provider.connected ? undefined : "opacity-50"
+                    }
+                    title={
+                      provider.connected
+                        ? undefined
+                        : "Add this provider's API key in apps/agent/.env.local"
+                    }
                   >
                     <ModelSelectorLogo provider={provider.provider} />
                     <ModelSelectorName>

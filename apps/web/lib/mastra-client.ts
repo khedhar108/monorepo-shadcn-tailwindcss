@@ -5,6 +5,11 @@ import {
   type NormalizedChatMessage,
 } from "./mastra-guardrails";
 import { AGENT_IDS, type AgentId, FEEDBACK_AGENT_ID } from "./agent-constants";
+import {
+  isErrorJsonText,
+  sanitizeAssistantText,
+  shouldHideAssistantText,
+} from "@repo/ai-ui/lib/message-sanitizer";
 
 const allowedAgentIds = new Set<string>(Object.values(AGENT_IDS));
 
@@ -117,6 +122,23 @@ function buildAgentStreamOptions({
   return options;
 }
 
+function extractTextFromMastraChunk(chunk: unknown): string {
+  if (!chunk || typeof chunk !== "object") return "";
+  const c = chunk as Record<string, unknown>;
+
+  if (typeof c.text === "string") return c.text;
+  if (typeof c.delta === "string") return c.delta;
+
+  const payload = c.payload;
+  if (payload && typeof payload === "object") {
+    const p = payload as Record<string, unknown>;
+    if (typeof p.text === "string") return p.text;
+    if (typeof p.delta === "string") return p.delta;
+  }
+
+  return "";
+}
+
 function createMastraChunkStream(
   response: AgentStreamResponse,
   onFinish?: (text: string) => Promise<void> | void,
@@ -127,21 +149,14 @@ function createMastraChunkStream(
       try {
         await response.processDataStream({
           onChunk: async (chunk) => {
-            // ponytail: Mastra ChunkType puts text at payload.text for text-delta
-            const c = chunk as {
-              type?: string;
-              text?: string;
-              payload?: { text?: string };
-            };
-            if (typeof c.text === "string") assistantText += c.text;
-            if (c.type === "text-delta" && typeof c.payload?.text === "string") {
-              assistantText += c.payload.text;
-            }
+            assistantText += extractTextFromMastraChunk(chunk);
             controller.enqueue(chunk);
           },
         });
+        // ponytail: sanitize before persist — leaked tool JSON / preambles never enter history
+        const sanitized = sanitizeAssistantText(assistantText);
         try {
-          await onFinish?.(assistantText);
+          await onFinish?.(sanitized);
         } catch {
           // non-critical — don't break the stream if persistence fails
         }
@@ -189,6 +204,15 @@ export async function streamAgentToAiSdk({
     },
   );
 
+  // ponytail: per-stream accumulator — scoped to this request via closure, not
+  // module-level, so concurrent requests don't leak hidden-text state. Declared
+  // outside the Transformer literal because the Transformer type doesn't allow
+  // custom properties. `accumulatedText` mirrors the per-id text so we can hide
+  // long error blobs that arrive in many small deltas (no single delta matches
+  // a hide rule, but the accumulated text does).
+  const hiddenTextIds = new Map<string, boolean>();
+  const accumulatedText = new Map<string, string>();
+
   return aiSdkStream.pipeThrough(
     new TransformStream({
       async transform(part, controller) {
@@ -197,10 +221,109 @@ export async function streamAgentToAiSdk({
           throw new MastraGatewayError(guardrail.reason, guardrail.status);
         }
 
+        // ponytail: drop text-delta stream parts whose payload (or accumulated
+        // text for the same part id) looks like leaked tool JSON / preambles /
+        // upstream error blobs. Llama-style models print tool calls as text; AI
+        // SDK stringifies provider errors into the stream on retry exhaustion.
+        if (isHiddenTextDeltaPart(part, hiddenTextIds, accumulatedText)) {
+          return;
+        }
+
         controller.enqueue(part);
       },
     }),
   );
+}
+
+// ponytail: pull `message` (and optionally `name`) out of a stringified
+// upstream error blob so we can show the user "Gone" / "rate limited" etc.
+// instead of the raw JSON. Falls back to "" if not parseable.
+function extractErrorMessage(text: string): string {
+  try {
+    const parsed = JSON.parse(text) as Record<string, unknown>;
+    const message = typeof parsed.message === "string" ? parsed.message : "";
+    const name = typeof parsed.name === "string" ? parsed.name : "";
+    if (message && name) return `${name.replace(/Error$/, "").trim() || name}: ${message}`.trim();
+    return message || name || "";
+  } catch {
+    return "";
+  }
+}
+
+// ponytail: per-id accumulator for text-delta stream parts. When the
+// accumulated text for a part matches a hide rule, drop subsequent deltas.
+// Hidden state is reset on the next text-start for the same id.
+function isHiddenTextDeltaPart(
+  part: unknown,
+  hiddenTextIds: Map<string, boolean>,
+  accumulatedText: Map<string, string>,
+): boolean {
+  if (!part || typeof part !== "object") return false;
+  const p = part as Record<string, unknown>;
+  const type = p.type;
+
+  if (type === "text-start") {
+    const id = typeof p.id === "string" ? p.id : "";
+    if (id) {
+      hiddenTextIds.set(id, false);
+      accumulatedText.set(id, "");
+    }
+    return false;
+  }
+
+  if (type === "text-end") {
+    const id = typeof p.id === "string" ? p.id : "";
+    if (id) {
+      // ponytail: just free the per-id state. We don't re-check the accumulated
+      // text here because any deltas that already passed through are on the
+      // client; the render-time sanitizer (AssistantMessageParts) is
+      // authoritative and hides the part based on its full text.
+      hiddenTextIds.delete(id);
+      accumulatedText.delete(id);
+    }
+    return false;
+  }
+
+  if (type !== "text-delta") return false;
+
+  const id = typeof p.id === "string" ? p.id : "";
+  const delta = typeof p.delta === "string" ? p.delta : "";
+
+  if (id && hiddenTextIds.get(id)) {
+    return true;
+  }
+
+  // Accumulate so we can detect error JSON that arrives in many deltas.
+  if (id && delta) {
+    const prev = accumulatedText.get(id) ?? "";
+    accumulatedText.set(id, prev + delta);
+    const acc = accumulatedText.get(id) ?? "";
+    // ponytail: if the accumulated text is an upstream provider error blob
+    // (NVIDIA/OpenAI-compatible 410/5xx stringified into the stream), surface
+    // it as a MastraGatewayError so the client shows a real error bubble
+    // instead of silently hiding it and leaving "Thinking..." forever.
+    if (acc.length >= 32 && isErrorJsonText(acc)) {
+      const detail = extractErrorMessage(acc);
+      throw new MastraGatewayError(
+        detail
+          ? `ARIA's model provider returned an error: ${detail}`
+          : "ARIA's model provider returned an error. Try again or switch model.",
+        502,
+      );
+    }
+    // Other hide-rule matches (tool JSON, preambles) — drop silently.
+    if (acc.length >= 32 && shouldHideAssistantText(acc)) {
+      hiddenTextIds.set(id, true);
+      return true;
+    }
+  }
+
+  if (shouldHideAssistantText(delta)) {
+    if (id) hiddenTextIds.set(id, true);
+    return true;
+  }
+
+  return false;
 }
 
 export async function executeAgentTool<TOutput>({

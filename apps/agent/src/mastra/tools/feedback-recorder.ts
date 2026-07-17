@@ -2,6 +2,7 @@ import { createTool } from '@mastra/core/tools';
 import { z } from 'zod';
 import {
   getRecentNodeIds,
+  getThreadTopicNodeIds,
   recordFeedback,
   updateNodeScores,
   upsertPreferenceNode,
@@ -56,7 +57,16 @@ export const feedbackRecorderTool = createTool({
       score,
     });
 
-    // 2) Derive a preference label and upsert a preference node
+    // 2) Resolve exploration topics most recently associated with this thread
+    //    (ponytail: recency-within-thread — no message-ID alignment needed)
+    let topicNodeIds: string[] = [];
+    try {
+      topicNodeIds = await getThreadTopicNodeIds(userId, threadId);
+    } catch (error) {
+      console.error('[feedback-recorder] thread topic lookup failed:', error);
+    }
+
+    // 3) Derive a preference label and upsert a preference node wired to those topics
     let preferenceLabel: string | null = null;
     try {
       const derived = derivePreferenceLabel({
@@ -72,17 +82,21 @@ export const feedbackRecorderTool = createTool({
           label: derived.label,
           score,
           source: 'feedback',
+          threadId,
+          topicNodeIds,
         });
       }
     } catch (error) {
       console.error('[feedback-recorder] preference derivation failed:', error);
     }
 
-    // 3) Keep existing behavior: nudge recent exploration node scores
+    // 4) Rescore the rated message's topics, not generic most-recent nodes
     const updatedNodeIds =
-      input.nodeIds && input.nodeIds.length > 0
-        ? input.nodeIds
-        : await getRecentNodeIds(userId);
+      topicNodeIds.length > 0
+        ? topicNodeIds
+        : input.nodeIds && input.nodeIds.length > 0
+          ? input.nodeIds
+          : await getRecentNodeIds(userId);
 
     await updateNodeScores(updatedNodeIds, score);
 

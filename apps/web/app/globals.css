@@ -4,6 +4,7 @@
 @theme {
   --font-sans: var(--font-geist-sans), sans-serif;
   --font-mono: var(--font-geist-mono), monospace;
+  --font-display: var(--font-geist-mono), ui-monospace, monospace;
   --container-8xl: 1800px;
   --radius-4xl: 2rem;
   --spacing-128: 32rem;
@@ -47,6 +48,12 @@ body {
   overflow-x: hidden;
   background: var(--aria-surface);
   color: var(--aria-text-primary);
+  /* ponytail: refined typography via OpenType features — zero network cost */
+  font-feature-settings: "ss01", "cv11", "cv02", "kern";
+  font-variant-ligatures: common-ligatures;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 @layer base {
@@ -101,6 +108,12 @@ body {
   50% { opacity: 0.75; transform: scale(1.03); }
 }
 
+/* Soft halo pulse for Aria avatar chip */
+@keyframes aria-avatar-halo {
+  0%, 100% { opacity: 0.55; }
+  50% { opacity: 0.95; }
+}
+
 @keyframes aria-overlay-in {
   from {
     opacity: 0;
@@ -143,6 +156,10 @@ body {
 
 .aria-breathe {
   animation: aria-breathe 6s ease-in-out infinite;
+}
+
+.aria-avatar-halo {
+  animation: aria-avatar-halo 3.6s ease-in-out infinite;
 }
 
 /* Staggered entrance — apply aria-stagger-N for delay */

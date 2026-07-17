@@ -9,6 +9,11 @@ import {
   ThumbsUp,
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
+import {
+  formatRelativeTime,
+  parseToDate,
+  pickLatestTimestamp,
+} from "@repo/ai-ui/lib/format-relative-time";
 
 export type ThreadInfo = {
   threadId: string;
@@ -26,25 +31,9 @@ export type ChatHistoryProps = {
   onNewChat: () => void;
   onSelectThread?: (threadId: string) => void;
   className?: string;
+  /** Bump to refetch thread list (e.g. after a new message is saved). */
+  refreshKey?: number;
 };
-
-function formatRelativeTime(dateStr: string): string {
-  try {
-    const date = new Date(dateStr);
-    const now = new Date();
-    const diffMs = now.getTime() - date.getTime();
-    const diffMins = Math.floor(diffMs / 60000);
-    if (diffMins < 1) return "just now";
-    if (diffMins < 60) return `${diffMins}m ago`;
-    const diffHours = Math.floor(diffMins / 60);
-    if (diffHours < 24) return `${diffHours}h ago`;
-    const diffDays = Math.floor(diffHours / 24);
-    if (diffDays < 7) return `${diffDays}d ago`;
-    return date.toLocaleDateString();
-  } catch {
-    return dateStr;
-  }
-}
 
 type HistoryFileEntry = {
   threadId: string;
@@ -71,12 +60,21 @@ function historyEntryToThread(entry: HistoryFileEntry): ThreadInfo {
   };
 }
 
+function sortThreadsByRecent(threads: ThreadInfo[]): ThreadInfo[] {
+  return [...threads].sort((a, b) => {
+    const da = parseToDate(a.lastActive)?.getTime() ?? 0;
+    const db = parseToDate(b.lastActive)?.getTime() ?? 0;
+    return db - da;
+  });
+}
+
 export function ChatHistory({
   userId,
   currentThreadId,
   onNewChat,
   onSelectThread,
   className = "",
+  refreshKey = 0,
 }: ChatHistoryProps) {
   const [threads, setThreads] = useState<ThreadInfo[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -87,7 +85,6 @@ export function ChatHistory({
     setError(null);
 
     try {
-      /* Fetch from both Mastra threads API and history file, then merge */
       const [threadsResponse, historyResponse] = await Promise.allSettled([
         fetch(`/api/threads?userId=${encodeURIComponent(userId)}`),
         fetch(`/api/history?userId=${encodeURIComponent(userId)}`),
@@ -103,38 +100,36 @@ export function ChatHistory({
           ? ((await historyResponse.value.json()) as { entries?: HistoryFileEntry[] }).entries ?? []
           : [];
 
-      /* Build a map of threadId → query/result from history file */
-      const historyMap = new Map<string, { lastQuery?: string; lastResult?: string; messageCount?: number; feedbackCount?: number }>();
+      const historyMap = new Map<string, HistoryFileEntry>();
       for (const entry of historyEntries) {
-        historyMap.set(entry.threadId, {
-          lastQuery: entry.lastQuery ?? entry.firstMessage ?? "",
-          lastResult: entry.lastResult ?? "",
-          messageCount: entry.messageCount,
-          feedbackCount: entry.feedbackCount,
-        });
+        historyMap.set(entry.threadId, entry);
       }
 
-      /* Merge: prefer Mastra threads for the list, enrich with history file data */
+      const merged: ThreadInfo[] = [];
+      const seen = new Set<string>();
+
       if (mastraThreads.length > 0) {
-        const merged = mastraThreads.map((t) => {
-          const histData = historyMap.get(t.threadId);
-          return {
+        for (const t of mastraThreads) {
+          const hist = historyMap.get(t.threadId);
+          merged.push({
             ...t,
-            lastQuery: t.lastQuery ?? histData?.lastQuery ?? t.topics[0] ?? "",
-            lastResult: t.lastResult ?? histData?.lastResult ?? "",
-          };
-        });
-        setThreads(merged);
-        return;
+            messageCount: hist?.messageCount ?? t.messageCount,
+            feedbackCount: hist?.feedbackCount ?? t.feedbackCount,
+            lastActive: pickLatestTimestamp(hist?.lastActive, t.lastActive) ?? t.lastActive,
+            lastQuery: t.lastQuery ?? hist?.lastQuery ?? hist?.firstMessage ?? t.topics[0] ?? "",
+            lastResult: t.lastResult ?? hist?.lastResult ?? "",
+          });
+          seen.add(t.threadId);
+        }
       }
 
-      /* Fallback: use history file entries only */
-      if (historyEntries.length > 0) {
-        setThreads(historyEntries.map(historyEntryToThread));
-        return;
+      for (const entry of historyEntries) {
+        if (seen.has(entry.threadId)) continue;
+        merged.push(historyEntryToThread(entry));
+        seen.add(entry.threadId);
       }
 
-      setThreads([]);
+      setThreads(sortThreadsByRecent(merged));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load history");
     } finally {
@@ -144,7 +139,7 @@ export function ChatHistory({
 
   useEffect(() => {
     void fetchThreads();
-  }, [fetchThreads]);
+  }, [fetchThreads, refreshKey]);
 
   return (
     <div

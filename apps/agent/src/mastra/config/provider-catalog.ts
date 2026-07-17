@@ -199,12 +199,14 @@ export function buildProviderModelCatalog(
 
 export function getConnectedProviders(): ConnectedProviderEntry[] {
   return (Object.keys(PROVIDER_MODELS) as LlmProvider[]).map((provider) => {
-    const connected = Boolean(process.env[PROVIDER_API_KEY_ENV[provider]]);
+    const connected = Boolean(process.env[PROVIDER_API_KEY_ENV[provider]]?.trim());
 
     return {
       provider,
       connected,
-      models: connected ? buildProviderModelCatalog(provider) : [],
+      // Always list models so the picker can show a warning next to the
+      // provider instead of hiding the catalog when the key is missing.
+      models: buildProviderModelCatalog(provider),
     };
   });
 }

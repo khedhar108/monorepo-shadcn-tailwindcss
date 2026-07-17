@@ -32,6 +32,8 @@ export const PROVIDER_DISPLAY_NAMES: Record<string, string> = {
   groq: "Groq",
   nvidia: "NVIDIA",
   sarvam: "Sarvam",
+  anthropic: "Anthropic",
+  openrouter: "OpenRouter",
 };
 
 export function formatModelName(modelId: string): string {

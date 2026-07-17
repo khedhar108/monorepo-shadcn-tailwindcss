@@ -281,6 +281,29 @@ export async function getRecentNodeIds(
   return result.rows.map((row) => String((row as Record<string, unknown>).id));
 }
 
+export async function getThreadTopicNodeIds(
+  userId: string,
+  threadId: string,
+  limit = 8,
+): Promise<string[]> {
+  await ensureGraphSchema();
+
+  const db = getDbClient();
+  const result = await db.execute({
+    sql: `SELECT DISTINCT gn.id AS id
+          FROM graph_nodes gn
+          INNER JOIN graph_node_messages gnm ON gnm.node_id = gn.id
+          WHERE gn.user_id = ?
+            AND gnm.thread_id = ?
+            AND gn.graph_kind = 'exploration'
+          ORDER BY gn.last_seen DESC
+          LIMIT ?`,
+    args: [userId, threadId, limit],
+  });
+
+  return result.rows.map((row) => String((row as Record<string, unknown>).id));
+}
+
 export async function recordFeedback(input: FeedbackRecordInput): Promise<void> {
   await ensureGraphSchema();
 
@@ -375,6 +398,8 @@ export async function upsertPreferenceNode(input: {
   label: string;
   score?: number;
   source?: string;
+  threadId?: string;
+  topicNodeIds?: string[];
 }): Promise<GraphNode> {
   await ensureGraphSchema();
 
@@ -396,9 +421,9 @@ export async function upsertPreferenceNode(input: {
     args: [prefId, input.userId, input.label.trim(), score, metadata, score],
   });
 
-  // Ensure edge from USER hub to this preference node
-  const [left, right] = hub.id < prefId ? [hub.id, prefId] : [prefId, hub.id];
-  const edgeId = `${left}:${right}:preference`;
+  // Edge from USER hub to this preference node (existing behavior)
+  const [hubLeft, hubRight] = hub.id < prefId ? [hub.id, prefId] : [prefId, hub.id];
+  const hubEdgeId = `${hubLeft}:${hubRight}:preference`;
 
   await db.execute({
     sql: `INSERT INTO graph_edges (
@@ -406,8 +431,27 @@ export async function upsertPreferenceNode(input: {
     ) VALUES (?, ?, ?, ?, 'preference', 1.0, datetime('now'))
     ON CONFLICT(source_id, target_id, edge_type) DO UPDATE SET
       weight = weight + 1.0`,
-    args: [edgeId, input.userId, hub.id, prefId, 'preference'],
+    args: [hubEdgeId, input.userId, hub.id, prefId, 'preference'],
   });
+
+  // ponytail: edges to the rated message's exploration topics — the missing link
+  // between feedback and the knowledge graph. Recency-within-thread resolution,
+  // no message-ID alignment needed.
+  const topicNodeIds = input.topicNodeIds ?? [];
+  for (const topicId of topicNodeIds) {
+    if (topicId === prefId) continue;
+    const [left, right] = prefId < topicId ? [prefId, topicId] : [topicId, prefId];
+    const edgeId = `${left}:${right}:preference`;
+
+    await db.execute({
+      sql: `INSERT INTO graph_edges (
+        id, user_id, source_id, target_id, edge_type, weight, created_at
+      ) VALUES (?, ?, ?, ?, 'preference', 1.0, datetime('now'))
+      ON CONFLICT(source_id, target_id, edge_type) DO UPDATE SET
+        weight = weight + 1.0`,
+      args: [edgeId, input.userId, prefId, topicId, 'preference'],
+    });
+  }
 
   const result = await db.execute({
     sql: `SELECT * FROM graph_nodes WHERE id = ?`,

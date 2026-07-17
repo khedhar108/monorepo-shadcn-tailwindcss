@@ -166,5 +166,7 @@ export async function runInputGuardrails(
 
 export async function runOutputGuardrails(_part: unknown): Promise<GuardrailDecision> {
   // Add output policy checks here before streamed parts are written to the UI.
+  // Hidden-text filtering (tool JSON / preambles) lives in mastra-client.ts so
+  // it can drop individual parts without breaking the stream.
   return { allowed: true };
 }

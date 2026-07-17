@@ -47,6 +47,8 @@ export const Message = ({ className, from, ...props }: MessageProps) => (
 
 export type MessageContentProps = HTMLAttributes<HTMLDivElement>;
 
+// ponytail: crisp solid bubble tokens — not 60% translucency over gray.
+// Light: user=rose, assistant=white. Dark: user=rose-950, assistant=neutral-900.
 export const MessageContent = ({
   children,
   className,
@@ -55,8 +57,12 @@ export const MessageContent = ({
   <div
     className={cn(
       "flex min-w-0 max-w-full flex-col gap-2 overflow-hidden text-sm",
-      "group-[.is-user]:max-w-[85%] group-[.is-user]:rounded-2xl group-[.is-user]:rounded-br-md group-[.is-user]:border group-[.is-user]:border-rose-200/80 group-[.is-user]:bg-rose-50 group-[.is-user]:px-4 group-[.is-user]:py-2.5 group-[.is-user]:text-rose-900 group-[.is-user]:shadow-sm dark:group-[.is-user]:border-rose-800/30 dark:group-[.is-user]:bg-rose-950/30 dark:group-[.is-user]:text-rose-100",
-      "group-[.is-assistant]:w-full group-[.is-assistant]:max-w-full group-[.is-assistant]:rounded-2xl group-[.is-assistant]:rounded-bl-md group-[.is-assistant]:border group-[.is-assistant]:border-emerald-200/80 group-[.is-assistant]:bg-emerald-50/60 group-[.is-assistant]:px-4 group-[.is-assistant]:py-3 group-[.is-assistant]:text-foreground dark:group-[.is-assistant]:border-emerald-800/20 dark:group-[.is-assistant]:bg-emerald-950/15",
+      // User bubble — right-aligned, rose-tinted, no emerald wash
+      "group-[.is-user]:max-w-[85%] group-[.is-user]:rounded-2xl group-[.is-user]:rounded-br-md group-[.is-user]:border group-[.is-user]:border-rose-200 group-[.is-user]:bg-rose-50 group-[.is-user]:px-4 group-[.is-user]:py-2.5 group-[.is-user]:text-rose-950 group-[.is-user]:shadow-sm",
+      "dark:group-[.is-user]:border-rose-900/60 dark:group-[.is-user]:bg-rose-950/50 dark:group-[.is-user]:text-rose-50",
+      // Assistant bubble — left-aligned, white/neutral, crisp border
+      "group-[.is-assistant]:w-full group-[.is-assistant]:max-w-full group-[.is-assistant]:rounded-2xl group-[.is-assistant]:rounded-bl-md group-[.is-assistant]:border group-[.is-assistant]:border-neutral-200 group-[.is-assistant]:bg-white group-[.is-assistant]:px-4 group-[.is-assistant]:py-3 group-[.is-assistant]:text-neutral-900 group-[.is-assistant]:shadow-sm",
+      "dark:group-[.is-assistant]:border-neutral-800 dark:group-[.is-assistant]:bg-neutral-900 dark:group-[.is-assistant]:text-neutral-100",
       "[&_pre]:max-w-full [&_pre]:overflow-x-auto [&_pre]:whitespace-pre-wrap [&_pre]:break-words [&_code]:break-words [&_code]:whitespace-pre-wrap",
       className
     )}
