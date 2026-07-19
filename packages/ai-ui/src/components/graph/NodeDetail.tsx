@@ -109,11 +109,11 @@ export function NodeDetail({ node, onClose, relatedNodes = [] }: NodeDetailProps
           >
             Connected topics
           </h4>
-          <div className="flex flex-wrap gap-1">
+          <div className="flex max-w-full gap-1 overflow-x-auto pb-1">
             {relatedNodes.map((label) => (
               <span
                 key={label}
-                className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px]"
+                className="inline-flex shrink-0 items-center whitespace-nowrap rounded-full px-2 py-0.5 text-[10px]"
                 style={{
                   background: "rgba(0,0,0,0.03)",
                   color: "#6B6B6B",
